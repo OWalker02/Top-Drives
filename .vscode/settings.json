@@ -1,0 +1,12 @@
+{
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "**/*.egg-info": true,
+    },
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    },
+}

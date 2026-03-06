@@ -1,0 +1,37 @@
+# Project metadata
+[project]
+name = "Top-Drives"
+version = "0.1.0"
+description = "Data Collection (from topdrivesrecords.com) for local challenge optimisation and garage analysis"
+requires-python = ">= 3.12"
+dependencies = []
+
+
+
+# Optional dependencies
+
+
+
+# Build system
+
+
+
+# Setuptools config
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "config*", "utils*"]
+
+
+
+# Tool configs
+[tool.ruff]
+line-length = 100
+exclude = ["rough_notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]   # E=pycodestyle, F=pyflakes, I=isort
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "config"]
+
+[tool.pre-commit]
