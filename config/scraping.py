@@ -27,12 +27,6 @@ CONDITION_MAP = {
 
 CLICK_OFF_COORDS = (500, 1000)
 
-RARITIES = ["S", "A", "B", "C", "D", "E", "F"]
-
-PROGRESS_PATH = "scraping_progress.json"
-
-DB_PATH = "db.json"
-
 CORE_KEYS = {
     "tas": ["rq", "make", "model", "make_model", "year", "engine_up", "weight_up", "chassis_up"],
     "info": ["rid"],

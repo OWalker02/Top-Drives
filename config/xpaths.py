@@ -52,7 +52,7 @@ _TUNES_BASE = _BASE + "/div[1]/div[2]/div[2]"
 TUNES = {
     "car_list": _TUNES_BASE,
     "first_tune_suf": "./div[2]/div/div[1]/div/div/button[1]",
-    "settings_rep": _TUNES_BASE + "div[REPLACE]/div[2]/div/div[1]/div/div[2]/button",
+    "settings_rep": _TUNES_BASE + "/div[REPLACE]/div[2]/div/div[1]/div/div[2]/button",
     "tune_rep": _BASE + "/div[4]/div[2]/div/div/div/div[2]/button[REPLACE]",
     "car_info": _BASE + "/div[4]/div[2]/div/div/div[2]",
 }
