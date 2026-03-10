@@ -6,7 +6,10 @@ ROOT = Path(__file__).parent.parent
 
 DATA = ROOT / "data"
 
-OWNED_PATH = DATA / "owned_cars.json"
+OWNED_DIR = DATA / "ownership"
+OWNED_PATH = OWNED_DIR / "owned_cars.json"
+TD_JSON_PATH = OWNED_DIR / "garage_td.json"
+TDR_JSON_PATH = OWNED_DIR / "garage_td_records.json"
 
 CACHE_DIR = DATA / "cache"
 

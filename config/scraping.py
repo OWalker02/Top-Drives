@@ -1,3 +1,5 @@
+"""Constants for scraping."""
+
 CONDITION_MAP = {
     "Type_00": "Dry",
     "Type_01": "Wet",
