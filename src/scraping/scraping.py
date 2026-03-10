@@ -10,7 +10,7 @@ import pandas as pd
 
 from config.paths import RAW_SCRAPED_JSON_PATH
 from config.scraping import CORE_KEYS
-from scraping.scraper import TDRScraper
+from src.scraping.scraper import TDRScraper
 from src.utils.timer import timer
 
 
