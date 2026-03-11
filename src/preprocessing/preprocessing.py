@@ -23,7 +23,7 @@ from src.preprocessing._preprocessing_helpers import (
     _calc_upgrade_diffs,
     _calc_upgrade_pen,
     _convert_cols,
-    _get_standard_tracks,
+    _get_tracks,
     _joined_col_to_set,
     _remove_invalid_cars,
 )
@@ -56,14 +56,13 @@ def _handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     """Handles missing values in (future) float columns and test bowl tracks."""
     df = df.copy()
 
-    for col in FLOAT_COLS:
-        missing = (df[col] == "-") | (df[col] == "")
-        df.loc[missing, col] = np.nan
+    _, test_tracks = _get_tracks(df)
 
-    for col in df.columns:
-        if col.startswith("Test"):
-            mask = df[col] == ""
-            df.loc[mask, col] = np.nan
+    for col in FLOAT_COLS:
+        df[col] = df[col].replace(["-", ""], np.nan)
+
+    for col in test_tracks:
+        df[col] = df[col].replace({"DNF": 0, "": np.nan}).astype(float)
 
     return df
 
@@ -76,6 +75,7 @@ def _convert_col_types(df: pd.DataFrame) -> pd.DataFrame:
     df = _convert_cols(df, INT_COLS, int)
     df = _convert_cols(df, FLOAT_COLS, float)
     df = _convert_cols(df, BOOL_COLS, bool)
+
     return df
 
 
@@ -84,7 +84,7 @@ def _convert_to_secs(df: pd.DataFrame) -> pd.DataFrame:
     """Converts all times (MM:SS.dd) to seconds."""
     df = df.copy()
 
-    standard_tracks = _get_standard_tracks(df)
+    standard_tracks, _ = _get_tracks(df)
 
     for col in standard_tracks:
         # Get DNFs then remove them for calculations

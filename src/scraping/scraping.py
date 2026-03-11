@@ -15,7 +15,7 @@ from src.utils.timer import timer
 
 
 @timer
-def load_db() -> Dict:
+def load_db() -> Dict | None:
     """
     Loads existing raw scraped JSON from config.paths.RAW_SCRAPED_JSON_PATH, or returns empty db if
     file doesn't exist.
@@ -24,10 +24,7 @@ def load_db() -> Dict:
         with open(RAW_SCRAPED_JSON_PATH, "r", encoding="utf-8") as f:
             db = json.load(f)
     else:
-        db = {
-            "car_times_and_stats_dicts": [],
-            "car_info_dicts": [],
-        }
+        db = None
     return db
 
 
@@ -61,6 +58,12 @@ def update_db(scraper: TDRScraper) -> Dict:
     New data takes priority over existing data for any conflicts.
     """
     db = load_db()
+
+    if db is None:
+        db = {
+            "car_times_and_stats_dicts": [],
+            "car_info_dicts": [],
+        }
 
     old_tas_df = pd.DataFrame(db["car_times_and_stats_dicts"])
     old_info_df = pd.DataFrame(db["car_info_dicts"])

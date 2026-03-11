@@ -24,12 +24,13 @@ def _convert_cols(df: pd.DataFrame, cols: List[str], dtype: type) -> pd.DataFram
     return df
 
 
-def _get_standard_tracks(df: pd.DataFrame) -> List:
+def _get_tracks(df: pd.DataFrame) -> List:
     """Extracts all non-test bowl tracks from df columns."""
     track_cols = [col for col in df.columns if col not in NON_TRACK_COLS]
     standard_tracks = [track for track in track_cols if not track.startswith("Test")]
+    test_tracks = [track for track in track_cols if track.startswith("Test")]
 
-    return standard_tracks
+    return standard_tracks, test_tracks
 
 
 def _remove_invalid_cars(df: pd.DataFrame) -> pd.DataFrame:

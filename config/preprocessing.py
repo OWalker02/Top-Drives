@@ -54,4 +54,5 @@ SIMPLE_ENCODE_COLS = [
     "seats",
     "engine_pos",
     "brakes",
+    "make",
 ]
