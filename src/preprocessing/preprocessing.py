@@ -23,6 +23,7 @@ from src.preprocessing._preprocessing_helpers import (
     _calc_upgrade_diffs,
     _calc_upgrade_pen,
     _convert_cols,
+    _deduplicate_car_lists,
     _get_tracks,
     _joined_col_to_set,
     _remove_invalid_cars,
@@ -39,12 +40,12 @@ def _merge_times_and_info() -> pd.DataFrame:
     """
     with open(RAW_SCRAPED_JSON_PATH, "r", encoding="utf-8") as f:
         raw_jsons = json.load(f)
-    tas_dict = raw_jsons["car_times_and_stats_dicts"]
-    info_dict = raw_jsons["car_info_dicts"]
+    tas_list = _deduplicate_car_lists(raw_jsons["car_times_and_stats_dicts"])
+    info_list = _deduplicate_car_lists(raw_jsons["car_info_dicts"])
 
     # Convert to dfs
-    tas_df = pd.DataFrame(tas_dict)
-    info_df = pd.DataFrame(info_dict)
+    tas_df = pd.DataFrame(tas_list)
+    info_df = pd.DataFrame(info_list)
 
     # Merge
     merged = tas_df.merge(info_df, how="outer", on=["rq", "make_model", "year"])
@@ -158,9 +159,14 @@ def _calc_penalties(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @timer
-def preprocess() -> pd.DataFrame:
-    """The full preprocessing pipeline from raw json data to clean csv."""
+def preprocess(test_mode: bool = False) -> pd.DataFrame:
+    """
+    The full preprocessing pipeline from raw json data to clean csv. test_mode only runs the first
+    1000 rows of the merged df.
+    """
     df = _merge_times_and_info()
+    if test_mode:
+        df = df.head(1000)
     df = _handle_missing_values(df)
     df = _convert_col_types(df)
     df = _convert_to_secs(df)

@@ -20,3 +20,5 @@ SCRAPING_PROGRESS_PATH = CACHE_DIR / "scraping_progress.json"
 PROCESSED_DIR = DATA / "processed"
 PREPROCESSED_PATH = PROCESSED_DIR / "preprocessed.csv"
 PREPROCESSED_ENC_PATH = PROCESSED_DIR / "preprocessed_enc.csv"
+
+CHALLENGES_DIR = DATA / "challenges"

@@ -1,6 +1,6 @@
 """Helper functions for preprocessing.py"""
 
-from typing import Any, List, Set, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -9,7 +9,19 @@ from config.constants import RARITY_BOUNDS
 from config.preprocessing import NON_TRACK_COLS, PENALTIES
 
 
-def _convert_cols(df: pd.DataFrame, cols: List[str], dtype: type) -> pd.DataFrame:
+def _deduplicate_car_lists(car_list: list) -> list:
+    """Removes all duplicate dictionaries from a list."""
+    seen_car_values = set()
+    deduplicated = []
+    for car_dict in car_list:
+        car_values = tuple(car_dict.values())
+        if car_values not in seen_car_values:
+            seen_car_values.add(car_values)
+            deduplicated.append(car_dict)
+    return deduplicated
+
+
+def _convert_cols(df: pd.DataFrame, cols: list[str], dtype: type) -> pd.DataFrame:
     """Converts a list of columns to int, float, or bool."""
     if dtype not in [int, float, bool]:
         raise ValueError(f"dtype must be int, float, or bool, got {dtype}")
@@ -24,7 +36,7 @@ def _convert_cols(df: pd.DataFrame, cols: List[str], dtype: type) -> pd.DataFram
     return df
 
 
-def _get_tracks(df: pd.DataFrame) -> List:
+def _get_tracks(df: pd.DataFrame) -> tuple[list, list]:
     """Extracts all non-test bowl tracks from df columns."""
     track_cols = [col for col in df.columns if col not in NON_TRACK_COLS]
     standard_tracks = [track for track in track_cols if not track.startswith("Test")]
@@ -44,7 +56,7 @@ def _remove_invalid_cars(df: pd.DataFrame) -> pd.DataFrame:
     return df.loc[~mask]
 
 
-def _get_car_mask(df: pd.DataFrame, car: Tuple[int, str, int, Any]) -> pd.Series:
+def _get_car_mask(df: pd.DataFrame, car: tuple[int, str, int, Any]) -> pd.Series:
     """Mask for a specific car."""
     df = df.copy()
 
@@ -96,11 +108,11 @@ def _calc_unowned_pen(df: pd.DataFrame) -> pd.DataFrame:
     df["unowned_pen"] = 0
 
     for rarity, pen in PENALTIES["unowned"].items():
-        mask = (df["rarity"] == rarity) & (df["owned"] is False)
+        mask = (df["rarity"] == rarity) & (~df["owned"])
         df.loc[mask, "unowned_pen"] = pen
 
     # Prize car penalties
-    mask = df["prize"] & (df["owned"] is False)
+    mask = df["prize"] & (~df["owned"])
     df["unowned_pen"] = df["unowned_pen"].astype(float)
     df.loc[mask, "unowned_pen"] = np.inf
 
@@ -121,7 +133,7 @@ def _calc_upgrade_pen(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _joined_col_to_set(df_col: pd.Series) -> Set:
+def _joined_col_to_set(df_col: pd.Series) -> set:
     """Splits a string in the form item1/item2/... into a set."""
     all_elements = set()
     for unique_str in df_col.unique():

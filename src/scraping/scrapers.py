@@ -1,24 +1,33 @@
-"""
-Selenium-based scraper for topdrivesrecords.com.
+"""Selenium-based scrapers for topdrivesrecords.com."""
 
-Handles browser setup, track selection, car filtering, and time/stats collection.
-Run via TDRScraper.scrape() after instantiation.
-"""
-
-import pickle
+import json
+import os
 import time
-from typing import Dict, List, Tuple
 
 import pyautogui
+from bs4 import BeautifulSoup as bs
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
 
+from config.challenge import CONDITION_MAP
 from config.constants import RARITIES
-from config.paths import SCRAPING_PROGRESS_PATH
-from config.scraping import CONDITION_MAP
+from config.paths import CHALLENGES_DIR, SCRAPING_PROGRESS_PATH
 from config.xpaths import FILTERS, MENU, SEARCH, TRACKS, TUNES
+from src.scraping._scraping_helpers import (
+    _get_challenge_name,
+    _get_other_conditions,
+    _get_restrictions,
+    _get_rq_limit,
+    _get_specific_challenge_info,
+    _get_track_name,
+    _get_track_time,
+    _split_car_row_html,
+    _split_into_groups,
+)
 from src.utils.timer import timer
 
 
@@ -33,8 +42,8 @@ class TDRScraper:
     def __init__(
         self,
         driver: WebDriver,
-        click_off_coords: Tuple[int, int],
-        filters: Dict | None = None,
+        click_off_coords: tuple[int, int],
+        filters: dict | None = None,
         scrape_new: bool = True,
         test_mode: bool = False,
     ):
@@ -55,16 +64,16 @@ class TDRScraper:
         self.filters = filters
         self.scrape_new = scrape_new
         self.test_mode = test_mode
-        self.trackset: List[str] = []
-        self.car_times_and_stats_dicts: List[Dict] = []
-        self.car_info_dicts: List[Dict] = []
-        self.scraped_groups: Dict[str, List[Tuple]] = {r: [] for r in RARITIES}
-        self.completed_rarities: List[str] = []
+        self.trackset: list[str] = []
+        self.car_times_and_stats_dicts: list[dict] = []
+        self.car_info_dicts: list[dict] = []
+        self.scraped_groups: dict[str, list[tuple]] = {r: [] for r in RARITIES}
+        self.completed_rarities: list[str] = []
 
     def load_progress(self) -> None:
         """Loads scraping progress from SCRAPING_PROGRESS_PATH into instance state."""
-        with open(SCRAPING_PROGRESS_PATH, "rb") as f:
-            progress = pickle.load(f)
+        with open(SCRAPING_PROGRESS_PATH, "r") as f:
+            progress = json.load(f)
         self.car_times_and_stats_dicts = progress["car_times_and_stats_dicts"]
         self.car_info_dicts = progress["car_info_dicts"]
         self.scraped_groups = progress["scraped_groups"]
@@ -124,24 +133,13 @@ class TDRScraper:
         self._click_by_xpath(MENU["layout"])
         self._click_off()
 
-    def _get_track_divs(self) -> List[WebElement]:
+    def _get_track_divs(self) -> list[WebElement]:
         """Returns all track row divs, excluding the search box."""
         tracks_box = self.driver.find_element(By.XPATH, TRACKS["tracks_box"])
         divs = tracks_box.find_elements(By.XPATH, "./div")
         return [d for d in divs if d.get_attribute("class") != "Track_SearchBox"]
 
-    def _get_other_conditions(self, track_div: WebElement) -> str:
-        """Returns condition suffix string ' (C)', ' (R)', or '' for a track div."""
-        i_elements = track_div.find_elements(By.TAG_NAME, "i")
-        if i_elements:
-            i_class = i_elements[0].get_attribute("class")
-            if i_class == "clearance":
-                return " (C)"
-            elif i_class == "roll":
-                return " (R)"
-        return ""
-
-    def _get_names_and_click(self, track_div: WebElement) -> List[str]:
+    def _get_names_and_click(self, track_div: WebElement) -> list[str]:
         """
         Clicks all condition buttons for a track and returns their formatted names.
         Returns empty list if the div is dynamic or a search box.
@@ -151,7 +149,7 @@ class TDRScraper:
             return []
 
         track_name = track_div.find_element(By.XPATH, "./div[1]/div").text
-        track_conditions = self._get_other_conditions(track_div)
+        track_conditions = _get_other_conditions(track_div)
         button_container_div = track_div.find_element(By.XPATH, "./div[2]/div")
         button_divs = button_container_div.find_elements(By.XPATH, "./div")
 
@@ -200,7 +198,7 @@ class TDRScraper:
         rarity_xpath = FILTERS["rarities"][0] + f"/button[{7 - r}]"
         self._click_by_xpath(rarity_xpath, delay)
 
-    def _select_filter(self, container_xpath_list: List[str], target_list: List[str]) -> None:
+    def _select_filter(self, container_xpath_list: list[str], target_list: list[str]) -> None:
         """Clicks all filter buttons whose label text matches any item in target_list."""
         for container_xpath in container_xpath_list:
             container = self.driver.find_element(By.XPATH, container_xpath)
@@ -224,33 +222,6 @@ class TDRScraper:
         car_count_el = self.driver.find_elements(By.XPATH, SEARCH["car_count"])
         return int(car_count_el[0].text[1:-1]) if car_count_el else 0
 
-    def _split_into_groups(self, car_count: int) -> List[Tuple[int, int]]:
-        """
-        Splits car_count into groups of 7, using 8 where needed to avoid remainders.
-        Falls back to variable-size final group if unsolvable.
-        """
-        groups = []
-        if car_count % 7 == 0:
-            for i in range(0, car_count, 7):
-                groups.append((i, i + 7))
-        else:
-            solved = False
-            max_eights = car_count // 8  # Check the max number of groups size 8
-            # Check all combos of groups of size 7 and 8
-            for num_add_one in range(1, max_eights + 1):
-                # If using this combo works, make it
-                if (car_count - num_add_one * 8) % 7 == 0:
-                    for i in range(0, car_count - num_add_one * 8, 7):
-                        groups.append((i, i + 7))
-                    for j in range(car_count - num_add_one * 8, car_count, 8):
-                        groups.append((j, j + 8))
-                    solved = True
-                    break
-            if not solved:
-                for i in range(0, car_count, 7):
-                    groups.append((i, min(i + 7, car_count)))
-        return groups
-
     def _show_all_cars(self) -> None:
         """Repeatedly clicks 'show more' until all cars are visible in search results."""
         while True:
@@ -273,7 +244,7 @@ class TDRScraper:
                 else:
                     raise e
 
-    def _add_car_group(self, group: Tuple[int, int]) -> None:
+    def _add_car_group(self, group: tuple[int, int]) -> None:
         """Adds a slice of cars from search results to the comparison."""
         search_results = self.driver.find_element(By.XPATH, SEARCH["search_results"])
         buttons = search_results.find_elements(By.XPATH, "./button")[group[0] : group[1]]
@@ -290,52 +261,22 @@ class TDRScraper:
         pyautogui.moveTo(100, 100)
         pyautogui.moveRel(200, 200, duration=0.1)
 
-    def _split_car_row_html(self, car_row_html: str, tune: Tuple[int, int, int]) -> Dict[str, str]:
-        """Parses a car row's HTML and returns a dict of core stats and tune values."""
-        stats = car_row_html.split("Car_HeaderBackDropRight")[1].split('Car_HeaderStatValue">')[1:]
-        stats = [s.split("<")[0] for s in stats]
-        stats_dict = {
-            "rq": car_row_html.split('BaseCard_Header2Right2">')[1].split("</div>")[0].strip(),
-            "make": car_row_html.split("</b>")[1].split("</div>")[0].strip(),
-            "model": car_row_html.split('_Header2Bottom">')[1].split("</div>")[0].strip(),
-            "make_model": (
-                car_row_html.split('class="Car_HeaderName')[1]
-                .split(">")[1]
-                .split("</div")[0]
-                .strip()
-            ),
-            "year": (
-                car_row_html.split('Car_HeaderBlockYear"')[1]
-                .split(">")[1]
-                .split("</div")[0]
-                .strip()
-            ),
-            "top_speed": stats[0],
-            "zero_sixty": stats[1],
-            "handling": stats[2],
-            "engine_up": tune[0],
-            "weight_up": tune[1],
-            "chassis_up": tune[2],
-        }
-        return stats_dict
-
-    def _extract_times(self, car_row_html: str) -> Dict[str, str]:
+    def _extract_times(self, car_row_html: str) -> dict[str, str]:
         """Parses a car row's HTML and returns a dict of track name -> time."""
         tracks_html_list = car_row_html.split('class="Row_Content"')[1:]
         times = [t.split("<!---->")[0].split(">")[1] for t in tracks_html_list]
         return dict(zip(self.trackset, times))
 
-    def _get_times(self, tune: Tuple[int, int, int]) -> None:
+    def _get_times(self, tune: tuple[int, int, int]) -> None:
         """
         Scrapes times for all cars in the current comparison
         and appends to car_times_and_stats_dicts.
         """
         main_car_list = self.driver.find_element(By.XPATH, TUNES["car_list"])
-        car_row_htmls = (
-            main_car_list.get_attribute("innerHTML").split('<div id="Car_Layout')[1:]  # type: ignore
-        )
+        main_list_html = main_car_list.get_attribute("innerHTML") or ""
+        car_row_htmls = main_list_html.split('<div id="Car_Layout')[1:]
         for car_row_html in car_row_htmls:
-            car_stats = self._split_car_row_html(car_row_html, tune)
+            car_stats = _split_car_row_html(car_row_html, tune)
             car_times = self._extract_times(car_row_html)
             car_dict = car_stats | car_times
             self.car_times_and_stats_dicts.append(car_dict)
@@ -352,13 +293,12 @@ class TDRScraper:
         """Scrapes detailed car info from the open tune dialog and appends to car_info_dicts."""
         car = self.driver.find_element(By.XPATH, TUNES["car_info"])
         car_html = car.get_attribute("innerHTML")
-        car_card = car_html.split("Row_DialogCardCard")[1]  # type: ignore
-        tags_div = (
-            car_html.split("Row_DialogCardTags")[1].split("Row_DialogCardDual")[0]  # type: ignore
-        )
-        other_stats_htmls = (
-            car_html.split("Row_DialogCardBottom")[1].split("Row_DialogCardStatValue")[1:]  # type: ignore
-        )
+        assert car_html is not None, "car innerHTML is None"
+        car_card = car_html.split("Row_DialogCardCard")[1]
+        tags_div_html = car_html.split("Row_DialogCardTags")[1] or ""
+        tags_div = tags_div_html.split("Row_DialogCardDual")[0]
+        other_html = car_html.split("Row_DialogCardBottom")[1] or ""
+        other_stats_htmls = other_html.split("Row_DialogCardStatValue")[1:]
 
         # MRA value has no span if not present
         try:
@@ -435,7 +375,7 @@ class TDRScraper:
             self._click_off()
 
     @timer
-    def _scrape_group(self, rarity: str, group: Tuple[int, int], g: int, num_groups: int) -> None:
+    def _scrape_group(self, rarity: str, group: tuple[int, int], g: int, num_groups: int) -> None:
         """Scrapes all tunes for a group of cars and saves progress."""
         self._add_car_group(group)
         self._click_off(0.1)
@@ -448,7 +388,8 @@ class TDRScraper:
                 self._select_first_tunes()
             else:
                 # Only need to get info once, so get it when changing from tune 0 to 1
-                self._change_tune(t + 1, t == 1)
+                get_info = True if t == 1 else False
+                self._change_tune(t + 1, get_info)
             self._get_times(tune)
 
         self._click_by_xpath(MENU["open_menu"])
@@ -468,9 +409,10 @@ class TDRScraper:
             "scraped_groups": self.scraped_groups,
             "completed_rarities": self.completed_rarities,
         }
-        with open(SCRAPING_PROGRESS_PATH, "wb") as f:
-            pickle.dump(progress, f)
+        with open(SCRAPING_PROGRESS_PATH, "w") as f:
+            json.dump(progress, f)
 
+    @timer
     def scrape(self) -> None:
         """Main entry point. Runs full scrape across all target rarities."""
         self.setup_page()
@@ -489,7 +431,7 @@ class TDRScraper:
                 self._click_off(0.1)
                 continue
 
-            groups = self._split_into_groups(car_count)
+            groups = _split_into_groups(car_count)
             self._show_all_cars()
 
             num_groups = len(groups)
@@ -500,3 +442,116 @@ class TDRScraper:
 
             self.completed_rarities.append(rarity)
             self.save_progress()
+
+
+class ChallengeScraper:
+    """
+    Scraper for topdrivesrecords.com/challenges
+
+    Collects challenge tracks, times, and general restrictions.
+    Instantiate with a WebDriver, challenge category, and challenge number, then call scrape().
+    """
+
+    def __init__(
+        self, driver: WebDriver, challenge_cat: str, challenge_num: int, override: bool = False
+    ):
+        """
+        Args:
+            driver: Selenium WebDriver instance.
+            challenge_cat: the challenge category for CHALLENGE_INFO.
+            challenge_num: The challenge number within the challenge cat.
+            override: Whether to override any existing challenge data.
+        """
+        self.driver = driver
+        self.round_soups = []
+        self.challenge_info = _get_specific_challenge_info(challenge_cat, challenge_num)
+        self.challenge_dict = {}
+        self.override = override
+        path_end = f"{self.challenge_info['name_start'].replace(' ', '_')}.json"
+        self.challenge_path = CHALLENGES_DIR / path_end
+
+    def _wait(self, locator: tuple[str, str]) -> WebElement:
+        """Waits for an element to be present and returns it."""
+        return WebDriverWait(self.driver, 10).until(EC.presence_of_element_located(locator))
+
+    @timer
+    def _open_challenges(self):
+        """Opens TDR challenges page."""
+        self.driver.get("https://www.topdrivesrecords.com/challenges")
+        self._wait((By.CLASS_NAME, "BaseEventName_Item"))
+
+    @timer
+    def _select_challenge(self):
+        """Selects the challenge beginning with self.challenge_name_start."""
+        challenge_list = self.driver.find_elements(By.CLASS_NAME, "BaseEventName_Item")
+        for challenge in challenge_list:
+            challenge_name = _get_challenge_name(challenge)
+            if challenge_name.startswith(self.challenge_info["name_start"]):
+                challenge.click()
+                self._wait((By.CLASS_NAME, "BaseCardMini_Floats"))
+                break
+
+    @timer
+    def _get_round_soups(self):
+        """Loops through all rounds in selected challenge and gets full page soups."""
+        while True:
+            soup = bs(self.driver.page_source, "html.parser")
+            self.round_soups.append(soup)
+            right_arrow = self.driver.find_elements(By.CLASS_NAME, "Row_DialogButtonTune")[1]
+            if right_arrow.get_attribute("disabled"):
+                break
+            right_arrow.click()
+
+    def _make_round_dict(self, r):
+        """Creates dict for one round of challenge."""
+        soup = self.round_soups[r]
+        round_dict = {}
+
+        # Get RQ lim
+        round_dict["RQ limit"] = _get_rq_limit(soup)
+
+        # Add restrictions
+        round_dict["Restrictions"], round_dict["RQ range"] = _get_restrictions(
+            self.challenge_info, r
+        )
+
+        # Get track details
+        row_contents = soup.find_all(class_="Row_Content")
+        row_contents = [content.get_text() for content in row_contents]
+        tracks = soup.select("#Row_Track0")
+
+        # Get name and time of all tracks in round
+        track_dict = {}
+        for t, track in enumerate(tracks):
+            track_name = _get_track_name(track, t, row_contents)
+            track_time = _get_track_time(track_name, t, row_contents)
+            track_dict[t + 1] = (track_name, track_time)
+        round_dict["Tracks"] = track_dict
+
+        return round_dict
+
+    def _make_challenge_dict(self):
+        """Creates dict for all rounds of a challenge."""
+        # Iterate through all rounds
+        for r in range(len(self.round_soups)):
+            round_dict = self._make_round_dict(r)
+
+            self.challenge_dict[r + 1] = round_dict
+
+    @timer
+    def _save_challenge(self):
+        with open(self.challenge_path, "w") as f:
+            json.dump(self.challenge_dict, f)
+
+    @timer
+    def scrape(self):
+        """Scrapes the specific challenge."""
+        # Check if we scrape or not
+        if os.path.isfile(self.challenge_path) and not self.override:
+            print(f"Challenge data already exists at {self.challenge_path}.")
+        else:
+            self._open_challenges()
+            self._select_challenge()
+            self._get_round_soups()
+            self._make_challenge_dict()
+            self._save_challenge()
