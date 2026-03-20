@@ -28,6 +28,7 @@ from src.preprocessing._preprocessing_helpers import (
     _get_tracks,
     _joined_col_to_set,
     _remove_invalid_cars,
+    _time_str_to_secs,
 )
 from src.utils.timer import timer
 
@@ -85,30 +86,11 @@ def _convert_col_types(df: pd.DataFrame) -> pd.DataFrame:
 def _convert_to_secs(df: pd.DataFrame) -> pd.DataFrame:
     """Converts all times (MM:SS.dd) to seconds."""
     df = df.copy()
-
     standard_tracks, _ = _get_tracks(df)
 
     for col in standard_tracks:
-        # Get DNFs then remove them for calculations
-        dnfs = df[col] == "DNF"
-        df.loc[dnfs, col] = ""
-
-        # Split
-        split = df[col].str.split(":", expand=True)
-        for segment in split.columns:
-            split[segment] = pd.to_numeric(split[segment], errors="coerce")
-
-        # Sum
-        if split.shape[1] == 1:
-            df[col] = np.nan
-        else:
-            split[0] = split[0] * 60
-            split[2] = split[2] / 100
-            df[col] = split.sum(axis=1)
-
-        # Change 0.0 for nans, and add back inf DNFs as inf
+        df[col] = df[col].apply(_time_str_to_secs)
         df.loc[df[col] == 0, col] = np.nan
-        df.loc[dnfs, col] = np.inf
 
     return df
 
@@ -123,12 +105,6 @@ def _add_owned_info(df: pd.DataFrame) -> pd.DataFrame:
 
     for col in TEMP_COLS:
         df[col] = 0
-
-    # Add new columns
-    df["owned"] = False
-    df["owned_engine_up"] = 0
-    df["owned_weight_up"] = 0
-    df["owned_chassis_up"] = 0
 
     df_sections = []
 
@@ -189,6 +165,7 @@ def preprocess(test_mode: bool = False) -> pd.DataFrame:
     df = _convert_to_secs(df)
     df = _add_owned_info(df)
     df = _calc_penalties(df)
+    return df
     df = _update_rid(df)
     return df
 

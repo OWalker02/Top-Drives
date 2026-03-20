@@ -64,17 +64,38 @@ def _get_car_mask(df: pd.DataFrame, car: tuple[int, str, int, Any]) -> pd.Series
     return (df["rq"] == rq) & (df["make_model"] == make_model) & (df["year"] == year)
 
 
-def _add_owned_stats(df, car_list):
+def _make_owned_df(car_list: list[tuple]) -> pd.DataFrame:
+    """Makes a dataframe with information of only owned cars."""
+    owned_rows = []
+    for car in car_list:
+        owned_row = {
+            "rq": car[0],
+            "make_model": car[1],
+            "year": car[2],
+            "owned": True,
+            "owned_engine_up": int(car[3][0]),
+            "owned_weight_up": int(car[3][1]),
+            "owned_chassis_up": int(car[3][2]),
+        }
+        owned_rows.append(owned_row)
+    return pd.DataFrame(owned_rows)
+
+
+def _add_owned_stats(df: pd.DataFrame, car_list: list[tuple]) -> pd.DataFrame:
     """Adds the owned and owned tune columns."""
     df = df.copy()
 
-    for car in car_list:
-        car_mask = _get_car_mask(df, car)
-        df.loc[car_mask, "owned"] = True
-        df.loc[car_mask, "owned_engine_up"] = int(car[3][0])
-        df.loc[car_mask, "owned_weight_up"] = int(car[3][1])
-        df.loc[car_mask, "owned_chassis_up"] = int(car[3][2])
-    return df
+    owned_df = _make_owned_df(car_list)
+    # Update full df with new owned cars info
+    merge_keys = ["rq", "make_model", "year"]
+    merged = df.merge(owned_df, on=merge_keys, how="left")
+    # Clean nans
+    merged["owned"] = merged["owned"].fillna(False)
+    merged["owned"] = merged["owned"].astype(bool)
+    for col in ["owned_engine_up", "owned_weight_up", "owned_chassis_up"]:
+        merged[col] = merged[col].fillna(0).astype(int)
+
+    return merged
 
 
 def _calc_upgrade_diffs(df: pd.DataFrame):
@@ -148,3 +169,17 @@ def _joined_col_to_set(df_col: pd.Series) -> set:
             all_elements.add(string)
 
     return all_elements
+
+
+def _time_str_to_secs(time_str: str) -> float:
+    """Converts one time string (MM:SS:ds) to seconds float."""
+    if time_str == "DNF":
+        return np.inf
+    if not time_str:
+        return np.nan
+    try:
+        parts = time_str.split(":")
+        return float(parts[0]) * 60 + float(parts[1]) + float(parts[2]) / 100
+    except Exception as e:
+        print("Encountered exception:", e)
+        return np.nan
