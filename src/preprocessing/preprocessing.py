@@ -19,6 +19,7 @@ from config.preprocessing import (
 from src.preprocessing._preprocessing_helpers import (
     _add_owned_stats,
     _add_rarity,
+    _calc_rq_pen,
     _calc_unowned_pen,
     _calc_upgrade_diffs,
     _calc_upgrade_pen,
@@ -151,10 +152,14 @@ def _calc_penalties(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     df = _add_rarity(df)
-    df = _calc_unowned_pen(df)
-    df = _calc_upgrade_pen(df)
+    unowned_pen = _calc_unowned_pen(df)
+    upgrade_pen = _calc_upgrade_pen(df)
+    rq_pen = _calc_rq_pen(df)
 
-    df["penalty"] = df["unowned_pen"] + df["upgrade_pen"]
+    # Add all unowned and upgrade penalties, then add rq penalty to any non-zero penalties
+    df["penalty"] = unowned_pen + upgrade_pen
+    non_zero = df["penalty"] > 0
+    df.loc[non_zero, "penalty"] += rq_pen[non_zero]
 
     return df.drop(TEMP_COLS, axis=1)
 

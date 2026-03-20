@@ -2,8 +2,6 @@
 
 ## In Progress
 
-- Rough notebooks -> Clean python files
-
 ## Priority
 
 - Make usable from start -> finish, (scraping -> challenge solving)

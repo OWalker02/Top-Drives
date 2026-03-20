@@ -4,7 +4,6 @@ Functions for updating the raw scraped JSON database with newly scraped data.
 
 import json
 import os
-from typing import Dict
 
 import pandas as pd
 
@@ -15,7 +14,7 @@ from src.utils.timer import timer
 
 
 @timer
-def load_db() -> Dict | None:
+def load_db() -> dict | None:
     """
     Loads existing raw scraped JSON from config.paths.RAW_SCRAPED_JSON_PATH, or returns empty db if
     file doesn't exist.
@@ -52,7 +51,7 @@ def _merge_new_into_old(
 
 
 @timer
-def update_db(scraper: TDRScraper) -> Dict:
+def update_db(scraper: TDRScraper) -> dict:
     """
     Merges newly scraped data from scraper into the raw JSON db and saves.
     New data takes priority over existing data for any conflicts.

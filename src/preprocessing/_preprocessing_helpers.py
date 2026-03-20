@@ -101,36 +101,42 @@ def _add_rarity(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _calc_unowned_pen(df: pd.DataFrame) -> pd.DataFrame:
+def _calc_unowned_pen(df: pd.DataFrame) -> pd.Series:
     """Calculates the unowned penalty for each row (if unowned)."""
-    df = df.copy()
-
-    df["unowned_pen"] = 0
+    unowned_pen = pd.Series(0.0, index=df.index)
 
     for rarity, pen in PENALTIES["unowned"].items():
         mask = (df["rarity"] == rarity) & (~df["owned"])
-        df.loc[mask, "unowned_pen"] = pen
+        unowned_pen[mask] = pen
 
     # Prize car penalties
     mask = df["prize"] & (~df["owned"])
-    df["unowned_pen"] = df["unowned_pen"].astype(float)
-    df.loc[mask, "unowned_pen"] = np.inf
+    unowned_pen[mask] = np.inf
 
-    return df
+    return unowned_pen
 
 
-def _calc_upgrade_pen(df: pd.DataFrame) -> pd.DataFrame:
+def _calc_upgrade_pen(df: pd.DataFrame) -> pd.Series:
     """Calculates the upgrade penalty for each row."""
-    df = df.copy()
-
-    df["upgrade_pen"] = 0
+    upgrade_pen = pd.Series(0.0, index=df.index)
 
     for rarity, pen in PENALTIES["upgrade"].items():
         for ups_left in range(0, 6):
             mask = (df["rarity"] == rarity) & (df["ups_left"] == ups_left)
-            df.loc[mask, "upgrade_pen"] = ups_left * pen * (df.loc[mask, "car_version"] + 1)
+            upgrade_pen[mask] = ups_left * pen * (df.loc[mask, "car_version"] + 1)
 
-    return df
+    return upgrade_pen
+
+
+def _calc_rq_pen(df: pd.DataFrame) -> pd.Series:
+    """Calculates the RQ based penalty for each row."""
+    rq_pen = pd.Series(0.0, index=df.index)
+
+    for rarity, (lb, ub) in RARITY_BOUNDS.items():
+        mask = df["rarity"] == rarity
+        rq_pen[mask] = ub - df.loc[mask, "rq"]
+
+    return rq_pen
 
 
 def _joined_col_to_set(df_col: pd.Series) -> set:

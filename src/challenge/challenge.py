@@ -1,4 +1,6 @@
-"""Challenge."""
+"""
+Functions for preparing the challenge DataFrame and other useful functions for the ChallengeSolver.
+"""
 
 import json
 import math

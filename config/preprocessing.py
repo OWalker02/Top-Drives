@@ -43,7 +43,7 @@ PENALTIES = {
     "upgrade": {"S": 10000, "A": 300, "B": 60, "C": 20, "D": 6, "E": 2, "F": 4},
 }
 
-TEMP_COLS = ["engine_diff", "weight_diff", "chassis_diff", "ups_left", "unowned_pen", "upgrade_pen"]
+TEMP_COLS = ["engine_diff", "weight_diff", "chassis_diff", "ups_left"]
 
 SIMPLE_ENCODE_COLS = [
     "rarity",
