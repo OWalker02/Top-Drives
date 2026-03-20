@@ -133,6 +133,7 @@ def _add_owned_info(df: pd.DataFrame) -> pd.DataFrame:
 
     for i, car_list in enumerate(owned_lists.values()):
         df_sec = df.copy()
+
         df_sec["car_version"] = i
 
         df_sec = _add_owned_stats(df_sec, car_list)
@@ -159,6 +160,17 @@ def _calc_penalties(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @timer
+def _update_rid(df: pd.DataFrame) -> pd.DataFrame:
+    """Updates rids with the car versions."""
+    df = df.copy()
+
+    new_rids = df["rid"] + "_" + df["car_version"].astype(str)
+    df["rid"] = new_rids
+
+    return df
+
+
+@timer
 def preprocess(test_mode: bool = False) -> pd.DataFrame:
     """
     The full preprocessing pipeline from raw json data to clean csv. test_mode only runs the first
@@ -166,12 +178,13 @@ def preprocess(test_mode: bool = False) -> pd.DataFrame:
     """
     df = _merge_times_and_info()
     if test_mode:
-        df = df.head(1000)
+        df = pd.concat([df.head(1000), df[df["make_model"] == "Nissan Cima VIP (Y51)"]])
     df = _handle_missing_values(df)
     df = _convert_col_types(df)
     df = _convert_to_secs(df)
     df = _add_owned_info(df)
     df = _calc_penalties(df)
+    df = _update_rid(df)
     return df
 
 
@@ -183,9 +196,12 @@ def encode_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     # One-hot encode all simple columns
+    # Get make col to add back in
+    make = df["make"]
     for col in SIMPLE_ENCODE_COLS:
         df[col] = df[col].astype("category")
         df = pd.get_dummies(df, columns=[col], prefix=col, dtype="int")
+    df["make"] = make
 
     # Encode tags & body
     encode_sets = {"tags": _joined_col_to_set(df["tags"]), "body": _joined_col_to_set(df["body"])}

@@ -67,7 +67,7 @@ def _edit_rid(rid: str) -> str:
 
 def _find_details(df: pd.DataFrame, rid: str, raise_no_match: bool) -> tuple[int, str, int]:
     """Use rid to get rq, mm, year, from processed data."""
-    filtered = df[df["rid"] == rid]
+    filtered = df[df["rid"].str.startswith(rid)]
     if filtered.empty:
         if raise_no_match:
             raise ValueError(f"No match found for rid: {rid}")

@@ -22,3 +22,6 @@ PREPROCESSED_PATH = PROCESSED_DIR / "preprocessed.csv"
 PREPROCESSED_ENC_PATH = PROCESSED_DIR / "preprocessed_enc.csv"
 
 CHALLENGES_DIR = DATA / "challenges"
+
+MISC_DIR = DATA / "misc"
+TRACK_UPPERS_PATH = MISC_DIR / "track_uppers.json"

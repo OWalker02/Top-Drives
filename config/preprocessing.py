@@ -46,6 +46,7 @@ PENALTIES = {
 TEMP_COLS = ["engine_diff", "weight_diff", "chassis_diff", "ups_left", "unowned_pen", "upgrade_pen"]
 
 SIMPLE_ENCODE_COLS = [
+    "rarity",
     "country",
     "tyres",
     "drive",

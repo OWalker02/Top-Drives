@@ -11,6 +11,8 @@
 ## Simple
 
 - Change challenge information dictionaries format (dataclass?)
+- Speed up pre-processing
+- Add memory function to solver (check if challenge_df is exactly same first)
 
 ## Long-term
 

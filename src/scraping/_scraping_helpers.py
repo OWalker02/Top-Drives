@@ -4,17 +4,17 @@ import numpy as np
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 
-from config.challenge import CHALLENGE_INFO, CONDITION_MAP
+from config.challenge import CONDITION_MAP
 
 
 def _get_other_conditions(track_div: WebElement) -> str:
     """Returns condition suffix string ' (C)', ' (R)', or '' for a track div."""
     i_elements = track_div.find_elements(By.TAG_NAME, "i")
     if i_elements:
-        i_class = i_elements[0].get_attribute("class")
-        if i_class == "clearance":
+        i_class = i_elements[0].get_attribute("class") or ""
+        if "tdicon-clearance" in i_class.split(" "):
             return " (C)"
-        elif i_class == "roll":
+        elif "tdicon-roll" in i_class.split(" "):
             return " (R)"
     return ""
 
@@ -100,24 +100,6 @@ def _convert_to_seconds(time_str):
         return np.inf
 
 
-def _get_specific_challenge_info(challenge_cat, challenge_num):
-    """Extracts information about a specific challenge from CHALLENGE_INFO."""
-    base_name_start, base_sr, base_er, base_restrictions = CHALLENGE_INFO[challenge_cat]["base"]
-    num_name_start, num_sr, num_er, num_restrictions = CHALLENGE_INFO[challenge_cat][challenge_num]
-
-    # Combine
-    challenge_name_start = base_name_start + num_name_start
-    start_round = base_sr if num_sr == 0 else num_sr
-    end_round = base_er if num_er == 0 else num_er
-    challenge_restrictions = base_restrictions | num_restrictions
-    return {
-        "name_start": challenge_name_start,
-        "start_round": start_round,
-        "end_round": end_round,
-        "challenge_restrictions": challenge_restrictions,
-    }
-
-
 def _get_restrictions(challenge_info, r):
     """Extracts the restrictions for a specific round."""
     restrictions = {}
@@ -136,6 +118,8 @@ def _get_restrictions(challenge_info, r):
 
 def _get_track_name(track, t, row_contents):
     name_base = row_contents[t * 3]
+    if name_base.endswith("%"):
+        name_base = name_base[:-3]
 
     extra = ""
     if track.find(class_="tdicon-roll"):

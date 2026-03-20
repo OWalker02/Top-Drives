@@ -48,7 +48,7 @@ def _merge_new_into_old(
         merged[original] = merged[original].combine_first(merged[col])
         merged.drop(columns=col, inplace=True)
 
-    return merged
+    return merged.drop_duplicates(ignore_index=True)
 
 
 @timer

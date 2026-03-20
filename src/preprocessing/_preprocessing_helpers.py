@@ -128,7 +128,7 @@ def _calc_upgrade_pen(df: pd.DataFrame) -> pd.DataFrame:
     for rarity, pen in PENALTIES["upgrade"].items():
         for ups_left in range(0, 6):
             mask = (df["rarity"] == rarity) & (df["ups_left"] == ups_left)
-            df.loc[mask, "upgrade_pen"] = ups_left * pen * df.loc[mask, "car_version"]
+            df.loc[mask, "upgrade_pen"] = ups_left * pen * (df.loc[mask, "car_version"] + 1)
 
     return df
 

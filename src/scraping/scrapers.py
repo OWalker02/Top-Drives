@@ -17,12 +17,12 @@ from config.challenge import CONDITION_MAP
 from config.constants import RARITIES
 from config.paths import CHALLENGES_DIR, SCRAPING_PROGRESS_PATH
 from config.xpaths import FILTERS, MENU, SEARCH, TRACKS, TUNES
+from src.challenge.challenge import get_challenge_info
 from src.scraping._scraping_helpers import (
     _get_challenge_name,
     _get_other_conditions,
     _get_restrictions,
     _get_rq_limit,
-    _get_specific_challenge_info,
     _get_track_name,
     _get_track_time,
     _split_car_row_html,
@@ -157,7 +157,8 @@ class TDRScraper:
         for b_div in button_divs:
             self._click(b_div)
             condition = b_div.get_attribute("class").split(" ")[2]  # type: ignore
-            track_names.append(f"{track_name}{track_conditions} / {CONDITION_MAP[condition]}")
+            mapped_condition = CONDITION_MAP[condition.split("_")[1]]
+            track_names.append(f"{track_name}{track_conditions} / {mapped_condition}")
 
         return track_names
 
@@ -464,7 +465,7 @@ class ChallengeScraper:
         """
         self.driver = driver
         self.round_soups = []
-        self.challenge_info = _get_specific_challenge_info(challenge_cat, challenge_num)
+        self.challenge_info = get_challenge_info(challenge_cat, challenge_num)
         self.challenge_dict = {}
         self.override = override
         path_end = f"{self.challenge_info['name_start'].replace(' ', '_')}.json"
