@@ -4,12 +4,24 @@ name = "Top-Drives"
 version = "0.1.0"
 description = "Data Collection (from topdrivesrecords.com) for local challenge optimisation and garage analysis"
 requires-python = ">= 3.12"
-dependencies = []
+dependencies = [
+    "beautifulsoup4",
+    "numpy",
+    "pandas",
+    "pulp",
+    "pyautogui",
+    "selenium",
+    "tqdm",
+]
 
 
 
 # Optional dependencies
-
+dev = [
+    "ipykernel",    # jupyter
+    "pre-commit",
+    "ruff",
+]
 
 
 # Build system

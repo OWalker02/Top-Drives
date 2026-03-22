@@ -3,5 +3,14 @@ __pycache__/
 *.pyc
 .ruff_cache/
 *.pkl
-data/*
 temp/*
+# Ignore everything in data (but not the folder itself)
+data/*
+# Un-ignore the misc folder and everything in it
+!data/misc
+# Un-ignore the ownership folder
+!data/ownership
+# Ignore everything in the ownership folder
+data/ownership/*
+# Un-ignore this file
+!data/ownership/owned_cars.json
