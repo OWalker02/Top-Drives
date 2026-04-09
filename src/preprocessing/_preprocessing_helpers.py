@@ -32,7 +32,7 @@ def _convert_cols(df: pd.DataFrame, cols: list[str], dtype: type) -> pd.DataFram
         if dtype is bool:
             df[col] = df[col] == "Yes"
         else:
-            df[col] = df[col].astype(dtype)
+            df[col] = df[col].astype(dtype, errors="ignore")
     return df
 
 
@@ -69,13 +69,11 @@ def _make_owned_df(car_list: list[tuple]) -> pd.DataFrame:
     owned_rows = []
     for car in car_list:
         owned_row = {
-            "rq": car[0],
-            "make_model": car[1],
-            "year": car[2],
+            "rid": car[1],
             "owned": True,
-            "owned_engine_up": int(car[3][0]),
-            "owned_weight_up": int(car[3][1]),
-            "owned_chassis_up": int(car[3][2]),
+            "owned_engine_up": int(car[2][0]),
+            "owned_weight_up": int(car[2][1]),
+            "owned_chassis_up": int(car[2][2]),
         }
         owned_rows.append(owned_row)
     return pd.DataFrame(owned_rows)
@@ -87,8 +85,7 @@ def _add_owned_stats(df: pd.DataFrame, car_list: list[tuple]) -> pd.DataFrame:
 
     owned_df = _make_owned_df(car_list)
     # Update full df with new owned cars info
-    merge_keys = ["rq", "make_model", "year"]
-    merged = df.merge(owned_df, on=merge_keys, how="left")
+    merged = df.merge(owned_df, on="rid", how="left")
     # Clean nans
     merged["owned"] = merged["owned"].fillna(False)
     merged["owned"] = merged["owned"].astype(bool)
@@ -167,6 +164,15 @@ def _joined_col_to_set(df_col: pd.Series) -> set:
         strings = unique_str.split("/")
         for string in strings:
             all_elements.add(string)
+
+    return all_elements
+
+
+def _list_col_to_set(df_col: pd.Series) -> set:
+    """Makes a set of all elements in all lists in a column."""
+    all_elements = set()
+    for unique_list in df_col.unique():
+        all_elements.update(unique_list)
 
     return all_elements
 

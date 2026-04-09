@@ -7,8 +7,9 @@ import json
 
 import numpy as np
 import pandas as pd
+from sklearn.preprocessing import MultiLabelBinarizer
 
-from config.paths import OWNED_PATH, RAW_SCRAPED_JSON_PATH
+from config.paths import OWNED_PATH, RAW_CI_PATH, RAW_TAS_PATH
 from config.preprocessing import (
     BOOL_COLS,
     FLOAT_COLS,
@@ -24,9 +25,7 @@ from src.preprocessing._preprocessing_helpers import (
     _calc_upgrade_diffs,
     _calc_upgrade_pen,
     _convert_cols,
-    _deduplicate_car_lists,
     _get_tracks,
-    _joined_col_to_set,
     _remove_invalid_cars,
     _time_str_to_secs,
 )
@@ -40,17 +39,19 @@ def _merge_times_and_info() -> pd.DataFrame:
     single DataFrame.
     Joins on shared core keys.
     """
-    with open(RAW_SCRAPED_JSON_PATH, "r", encoding="utf-8") as f:
-        raw_jsons = json.load(f)
-    tas_list = _deduplicate_car_lists(raw_jsons["car_times_and_stats_dicts"])
-    info_list = _deduplicate_car_lists(raw_jsons["car_info_dicts"])
+    with open(RAW_TAS_PATH, "r", encoding="utf-8") as f:
+        raw_tas = json.load(f)
+    tas_only = [d for v in raw_tas.values() for d in v["dicts"]]
 
-    # Convert to dfs
-    tas_df = pd.DataFrame(tas_list)
-    info_df = pd.DataFrame(info_list)
+    with open(RAW_CI_PATH, "r", encoding="utf-8") as f:
+        raw_ci = json.load(f)
+
+    # Convert to DFs
+    tas_df = pd.DataFrame(tas_only)
+    info_df = pd.DataFrame(raw_ci)
 
     # Merge
-    merged = tas_df.merge(info_df, how="outer", on=["rq", "make_model", "year"])
+    merged = tas_df.merge(info_df, how="outer", on="rid")
     return merged
 
 
@@ -141,12 +142,20 @@ def _calc_penalties(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @timer
-def _update_rid(df: pd.DataFrame) -> pd.DataFrame:
+def _add_uid(df: pd.DataFrame) -> pd.DataFrame:
     """Updates rids with the car versions."""
     df = df.copy()
 
-    new_rids = df["rid"] + "_" + df["car_version"].astype(str)
-    df["rid"] = new_rids
+    uids = (
+        df["rid"]
+        + "_"
+        + df["car_version"].astype(str)
+        + "_"
+        + df["engine_up"].astype(str)
+        + df["weight_up"].astype(str)
+        + df["chassis_up"].astype(str)
+    )
+    df["uid"] = uids
 
     return df
 
@@ -158,15 +167,15 @@ def preprocess(test_mode: bool = False) -> pd.DataFrame:
     1000 rows of the merged df.
     """
     df = _merge_times_and_info()
+    df = df[~df["engine_up"].isna()]
     if test_mode:
         df = pd.concat([df.head(1000), df[df["make_model"] == "Nissan Cima VIP (Y51)"]])
     df = _handle_missing_values(df)
     df = _convert_col_types(df)
-    df = _convert_to_secs(df)
+    # df = _convert_to_secs(df)
     df = _add_owned_info(df)
     df = _calc_penalties(df)
-    return df
-    df = _update_rid(df)
+    df = _add_uid(df)
     return df
 
 
@@ -179,19 +188,19 @@ def encode_df(df: pd.DataFrame) -> pd.DataFrame:
 
     # One-hot encode all simple columns
     # Get make col to add back in
-    make = df["make"]
+    make = df["brand"]
     for col in SIMPLE_ENCODE_COLS:
         df[col] = df[col].astype("category")
         df = pd.get_dummies(df, columns=[col], prefix=col, dtype="int")
-    df["make"] = make
+    df["brand"] = make
 
     # Encode tags & body
-    encode_sets = {"tags": _joined_col_to_set(df["tags"]), "body": _joined_col_to_set(df["body"])}
-    for cat, cat_set in encode_sets.items():
-        for indiv in cat_set:
-            indiv_col_str = f"{cat}_{indiv.replace(' ', '_')}"
-            df[indiv_col_str] = 0
-            mask = df[cat].str.contains(indiv)
-            df.loc[mask, indiv_col_str] = 1
-
+    for list_col in [{"col": "tags", "pref": "tag"}, {"col": "bodyTypes", "pref": "body"}]:
+        mlb = MultiLabelBinarizer()
+        encoded_category_df = pd.DataFrame(
+            mlb.fit_transform(df[list_col["col"]]),
+            columns=[f"{list_col['pref']}_{c.replace(' ', '_')}" for c in mlb.classes_],
+            index=df.index,
+        )
+        df = pd.concat([df, encoded_category_df], axis=1)
     return df

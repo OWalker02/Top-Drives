@@ -13,12 +13,12 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
-from config.challenge import CONDITION_MAP
-from config.constants import RARITIES
+from config.constants import RARITIES, SURFACE_MAP
 from config.paths import CHALLENGES_DIR, SCRAPING_PROGRESS_PATH
 from config.xpaths import FILTERS, MENU, SEARCH, TRACKS, TUNES
 from src.challenge.challenge import get_challenge_info
-from src.scraping._scraping_helpers import (
+from src.utils.timer import timer
+from src.zzz_selenium_scraping._scraping_helpers import (
     _get_challenge_name,
     _get_other_conditions,
     _get_restrictions,
@@ -28,7 +28,6 @@ from src.scraping._scraping_helpers import (
     _split_car_row_html,
     _split_into_groups,
 )
-from src.utils.timer import timer
 
 
 class TDRScraper:
@@ -157,7 +156,7 @@ class TDRScraper:
         for b_div in button_divs:
             self._click(b_div)
             condition = b_div.get_attribute("class").split(" ")[2]  # type: ignore
-            mapped_condition = CONDITION_MAP[condition.split("_")[1]]
+            mapped_condition = SURFACE_MAP[condition.split("_")[1]]
             track_names.append(f"{track_name}{track_conditions} / {mapped_condition}")
 
         return track_names
@@ -468,7 +467,7 @@ class ChallengeScraper:
         self.challenge_info = get_challenge_info(challenge_cat, challenge_num)
         self.challenge_dict = {}
         self.override = override
-        path_end = f"{self.challenge_info['name_start'].replace(' ', '_')}.json"
+        path_end = f"{self.challenge_info['name_start'].replace(' ', '_').replace(':', '-')}.json"
         self.challenge_path = CHALLENGES_DIR / path_end
 
     def _wait(self, locator: tuple[str, str]) -> WebElement:

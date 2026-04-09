@@ -3,6 +3,7 @@
         "**/__pycache__": true,
         "**/*.pyc": true,
         "**/*.egg-info": true,
+        "**/.ruff_cache": true
     },
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "charliermarsh.ruff",

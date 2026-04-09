@@ -5,8 +5,7 @@ from collections import defaultdict
 
 import pandas as pd
 
-from config.paths import OWNED_PATH, PREPROCESSED_PATH, TD_JSON_PATH, TDR_JSON_PATH
-from config.update_ownership import RID_CHANGES, VARIANTS
+from config.paths import OWNED_PATH, PREPROCESSED_PATH, RAW_CI_PATH, TD_JSON_PATH, TDR_JSON_PATH
 from src.utils.timer import timer
 
 
@@ -54,18 +53,7 @@ def match_records() -> list:
     return all_owned_matched
 
 
-def _edit_rid(rid: str) -> str:
-    """Edits rid with any changes from RID_CHANGES or removes suffices from VARIANTS."""
-    if rid in RID_CHANGES:
-        rid = RID_CHANGES[rid]
-    for v in VARIANTS:
-        if rid.endswith(v):
-            rid = rid.strip(v)
-            break
-    return rid
-
-
-def _find_details(df: pd.DataFrame, rid: str, raise_no_match: bool) -> tuple[int, str, int]:
+def _find_rq(df: pd.DataFrame, rid: str, raise_no_match: bool) -> tuple[int, str, int]:
     """Use rid to get rq, mm, year, from processed data."""
     filtered = df[df["rid"].str.startswith(rid)]
     if filtered.empty:
@@ -74,10 +62,8 @@ def _find_details(df: pd.DataFrame, rid: str, raise_no_match: bool) -> tuple[int
         else:
             return (0, "", 0)
     rq = int(filtered["rq"].iloc[0])
-    mm = filtered["make_model"].iloc[0]
-    year = int(filtered["year"].iloc[0])
 
-    return rq, mm, year
+    return rq
 
 
 def _get_tune(td: dict) -> str:
@@ -99,14 +85,16 @@ def create_new_big_list(
     all_owned_matched: list, lowest_unlocked: int = 0, raise_no_match: bool = True
 ) -> list:
     """Creates one list of all owned cars (all locked and all unlocked above a certain RQ)."""
-    preprocessed_df = load_preprocessed()
     new_big_list = []
     unlocked = []
+    with open(RAW_CI_PATH, "r", encoding="utf-8") as f:
+        ci_list = json.load(f)
+    ci_dict = {ci["rid"]: ci for ci in ci_list}
 
     # Iterate through list of joined jsons
     for td, tdr in all_owned_matched:
-        rid = _edit_rid(tdr["rid"])
-        rq, mm, year = _find_details(preprocessed_df, rid, raise_no_match)
+        rid = tdr["rid"].encode("utf-8").decode("latin-1")
+        rq = ci_dict[rid]["rq"]
 
         if rq == 0:  # Only possible if not raise_no_match
             continue
@@ -117,9 +105,10 @@ def create_new_big_list(
             continue
 
         # Add to new big list
-        new_big_list.append((rq, mm, year, _get_tune(td)))
+        new_big_list.append((rq, rid, _get_tune(td)))
 
-    new_big_list.sort(key=lambda x: (-x[0], x[1].lower(), -int(x[3])))
+    # Sort: First by RQ (desc), then rid (asc), then tune (desc)
+    new_big_list.sort(key=lambda x: (-x[0], x[1].lower(), -int(x[2])))
     return new_big_list
 
 
@@ -133,9 +122,9 @@ def create_owned_lists(big_list: list) -> dict:
 
     counts = defaultdict(int)
     for car in big_list:
-        mm = car[1]
-        counts[mm] += 1
-        count = counts[mm]
+        rid = car[1]
+        counts[rid] += 1
+        count = counts[rid]
         if count <= 3:
             car = list(car)
             owned[count].append(car)

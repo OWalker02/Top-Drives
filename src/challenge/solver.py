@@ -8,18 +8,18 @@ import pulp
 from config.challenge import PRINT_COLS
 from src.challenge.challenge import (
     get_challenge_info,
-    get_challenge_setup,
     get_rq_colour,
-    load_challenge_dict,
+    load_filtered_challenge_dict,
 )
 from src.utils.timer import timer
+
+"""Solver for TD Challenges using PuLP."""
 
 
 class ChallengeSolver:
     """
     Solver for a Top Drives Challenge.
-
-    Uses a pulp.PULP_CBC_CMD solver to find optimal solution to passed challenge.
+    Uses pulp.PULP_CBC_CMD to find the optimal car assignment minimising total penalty.
     """
 
     def __init__(
@@ -36,328 +36,295 @@ class ChallengeSolver:
             encoded_df: Preprocessed encoded DataFrame.
             challenge_df: Challenge DataFrame from make_challenge_df().
             challenge_cat: The challenge category identifier.
-            challenge_num: The number of challenge in the category.
-            only_owned: Boolean, whether to only include owned cars in challenge solve.
-            time_limit: Max time for the solver to run before printing/returning most recent
-                        solution.
+            challenge_num: The challenge number within the category.
+            only_owned: If True, only include owned cars.
+            time_limit: Max solver time in seconds before returning best found solution.
         """
+        # Data
         self.encoded_df = encoded_df
         self.data = challenge_df.to_dict(orient="index")
+
+        # Challenge config
         self.challenge_cat = challenge_cat
         self.challenge_num = challenge_num
         self.challenge_info = get_challenge_info(challenge_cat, challenge_num)
-        self.challenge_setup = get_challenge_setup(
-            encoded_df, challenge_cat, challenge_num, only_owned
-        )
-        self.challenge_dict = {
-            k: v
-            for k, v in load_challenge_dict(challenge_cat, challenge_num).items()
-            if self.challenge_setup["sr"] <= int(k) <= self.challenge_setup["er"]
-        }
+        self.challenge_dict = load_filtered_challenge_dict(self.challenge_info)
+
+        # Keys
+        self.car_keys: list[int] = list(self.data.keys())
+        self.round_keys: list[str] = list(self.challenge_dict.keys())
+        self.track_ids: list[str] = [f"{r}.{i + 1}" for r in self.round_keys for i in range(5)]
+
+        # Solver config
         self.time_limit = time_limit
         self.problem = pulp.LpProblem("Challenge", pulp.LpMinimize)
-        self.car_keys = list(self.data.keys())
-        self.round_keys = list(self.challenge_dict.keys())
-        self.track_ids = [f"{round_key}.{i + 1}" for round_key in self.round_keys for i in range(5)]
-        # Need a way to group all occurrences of each version of each car
-        self.car_rid_groups = defaultdict(list)
-        for car_key in self.car_keys:
-            rid = self.data[car_key]["rid"]
-            self.car_rid_groups[rid].append(car_key)
-        # Every car/track combination is an element (1 if car used on track, 0 if not used)
-        self.x = {}
-        # Every car is an element, used for penalty calculation as multiple uses of a car is not
-        # penalised multiple times
-        self.y = {}
 
-    # region Problem Setup
+        # Set by build_problem()
+        self.x: dict = {}
+        self.y: dict = {}
+        self.car_rid_groups: defaultdict[str, list[int]] = defaultdict(list)
+
+        # Set by solve()
+        self.status: str = "Not solved"
+        self.objective_value: float | None = None
+        self.round_dfs: dict[str, pd.DataFrame] = {}
+        self.cars_used: list[int] = []
+
+    # region Build
+
+    def _build_car_rid_groups(self) -> None:
+        for car_key in self.car_keys:
+            self.car_rid_groups[self.data[car_key]["rid"]].append(car_key)  # type: ignore
 
     @timer
     def _initialise_variables(self) -> None:
-        """Initialises x and y."""
-        car_track_tuples = []
-        for track_id in self.track_ids:
-            for car_key in self.car_keys:
-                car_track_tuples.append((car_key, track_id))
+        """Initialises x (car/track assignments) and y (car used flags)."""
+        car_track_tuples = [
+            (car_key, track_id) for track_id in self.track_ids for car_key in self.car_keys
+        ]
         self.x = pulp.LpVariable.dicts("car_track_use", car_track_tuples, cat="Binary")
         self.y = pulp.LpVariable.dicts("car_used", self.car_keys, cat="Binary")
 
     @timer
     def _add_objective(self) -> None:
-        """Adds the objective function to the problem: sum of penalties of all cars used."""
-        objective = pulp.lpSum([self.data[i]["penalty"] * self.y[i] for i in self.car_keys])
-        self.problem += objective, "Total_Penalty"
+        """Minimise total penalty of all cars used."""
+        self.problem += (
+            pulp.lpSum([self.data[i]["penalty"] * self.y[i] for i in self.car_keys]),
+            "Total_Penalty",
+        )
+
+    def _round_track_ids(self, round_key: str) -> list[str]:
+        """Returns all track ids belonging to a round."""
+        return [t for t in self.track_ids if t.startswith(f"{round_key}.")]
 
     def _constraint_x_y_link(self) -> None:
-        """
-        Adds constraint: If a car is used, update the corresponding y.
-
-        For each car, the sum of its x values (tracks assigned) must be <= num_tracks * y[car].
-        This forces y[car] = 1 whenever the car is used, ensuring its penalty is counted.
-        """
+        """If a car is used on any track, force y=1 so its penalty is counted."""
         num_tracks = len(self.track_ids)
         for car_key in self.car_keys:
-            car_x_vals = [self.x[(car_key, track_id)] for track_id in self.track_ids]
-            car_y = self.y[car_key]
             self.problem.addConstraint(
-                pulp.lpSum(car_x_vals) <= num_tracks * car_y, f"Link_x_y_{car_key}"
+                pulp.lpSum([self.x[(car_key, t)] for t in self.track_ids])
+                <= num_tracks * self.y[car_key],
+                f"Link_x_y_{car_key}",
             )
 
-    def _constraint_one_car_one_track(self) -> None:
-        """
-        Adds constraint: Every race must have exactly one car assigned.
-
-        For each track, the sum of its x values (cars assigned) must be exactly 1.
-        """
+    def _constraint_one_car_per_track(self) -> None:
+        """Every track must have exactly one car assigned."""
         for track_id in self.track_ids:
-            track_x_vals = [self.x[(car_key, track_id)] for car_key in self.car_keys]
             self.problem.addConstraint(
-                pulp.lpSum(track_x_vals) == 1, f"One_car_per_track_{track_id}"
+                pulp.lpSum([self.x[(car_key, track_id)] for car_key in self.car_keys]) == 1,
+                f"One_car_per_track_{track_id}",
             )
 
-    def _constraint_one_car_use_per_round(self) -> None:
-        """
-        Adds constraint: Each car can be used at most once per round.
-
-        For each car in each round, the sum of its x values (tracks assigned) must be 0 or 1 (<=1).
-        """
+    def _constraint_one_car_per_round(self) -> None:
+        """Each car can be used at most once per round."""
         for round_key in self.round_keys:
+            round_tracks = self._round_track_ids(round_key)
             for car_key in self.car_keys:
-                round_track_ids = [
-                    track_id for track_id in self.track_ids if track_id.startswith(f"{round_key}.")
-                ]
-                car_round_x_vals = [self.x[(car_key, track_id)] for track_id in round_track_ids]
                 self.problem.addConstraint(
-                    pulp.lpSum(car_round_x_vals) <= 1,
+                    pulp.lpSum([self.x[(car_key, t)] for t in round_tracks]) <= 1,
                     f"One_car_use_per_round_{round_key}_{car_key}",
                 )
 
     def _constraint_round_success(self) -> None:
-        """
-        Adds constraint: Each round must have a total score of at least 250pts.
-
-        For each round, the sum of scores of cars assigned to tracks in the round must be >= 250.
-        """
+        """Each round must score at least 250 pts."""
         for round_key in self.round_keys:
-            round_track_ids = [
-                track_id for track_id in self.track_ids if track_id.startswith(f"{round_key}.")
-            ]
-            assigned_car_pts = [
-                self.data[car_key][track_id] * self.x[(car_key, track_id)]
-                for car_key in self.car_keys
-                for track_id in round_track_ids
-            ]
-            self.problem.addConstraint(pulp.lpSum(assigned_car_pts) >= 250, f"250_pts_{round_key}")
-
-    def _constraint_within_rq_lim(self) -> None:
-        """
-        Adds constraint: The sum of RQ of cars used in a round must not exceed the round limit.
-
-        For each round, the sum of rqs of cars assigned to a track in the round, must be <= 250.
-        """
-        for round_key, round_info in self.challenge_dict.items():
-            rq_lim = round_info["RQ limit"]
-            round_track_ids = [
-                track_id for track_id in self.track_ids if track_id.startswith(f"{round_key}.")
-            ]
-            assigned_car_rqs = [
-                self.data[car_key]["rq"] * self.x[(car_key, track_id)]
-                for car_key in self.car_keys
-                for track_id in round_track_ids
-            ]
+            round_tracks = self._round_track_ids(round_key)
             self.problem.addConstraint(
-                pulp.lpSum(assigned_car_rqs) <= rq_lim, f"RQ_limit_{round_key}"
+                pulp.lpSum(
+                    [
+                        self.data[car_key][track_id] * self.x[(car_key, track_id)]
+                        for car_key in self.car_keys
+                        for track_id in round_tracks
+                    ]
+                )
+                >= 250,
+                f"250_pts_{round_key}",
             )
 
-    def _constraint_correct_restrictions(self) -> None:
-        """
-        Adds constraint: All restrictions must be met
-
-        For each round, for each restriction applying to the round, the number of cars fitting the
-        restriction must be at least the required quantity.
-        """
+    def _constraint_rq_limit(self) -> None:
+        """Total RQ of cars used in a round must not exceed the round's RQ limit."""
         for round_key, round_info in self.challenge_dict.items():
-            round_track_ids = [
-                track_id for track_id in self.track_ids if track_id.startswith(f"{round_key}.")
-            ]
+            round_tracks = self._round_track_ids(round_key)
+            self.problem.addConstraint(
+                pulp.lpSum(
+                    [
+                        self.data[car_key]["rq"] * self.x[(car_key, t)]
+                        for car_key in self.car_keys
+                        for t in round_tracks
+                    ]
+                )
+                <= round_info["RQ limit"],
+                f"RQ_limit_{round_key}",
+            )
+
+    def _constraint_restrictions(self) -> None:
+        """All per-round restrictions must be met."""
+        for round_key, round_info in self.challenge_dict.items():
+            round_tracks = self._round_track_ids(round_key)
             for restriction, quantity in round_info["Restrictions"].items():
-                assigned_car_restrictions = [
-                    self.data[car_key][restriction] * self.x[(car_key, track_id)]
-                    for car_key in self.car_keys
-                    for track_id in round_track_ids
-                ]
                 self.problem.addConstraint(
-                    pulp.lpSum(assigned_car_restrictions) >= quantity,
+                    pulp.lpSum(
+                        [
+                            self.data[car_key][restriction] * self.x[(car_key, t)]
+                            for car_key in self.car_keys
+                            for t in round_tracks
+                        ]
+                    )
+                    >= quantity,
                     f"Restriction_{round_key}_{restriction}_{quantity}",
                 )
 
-    def _constraint_no_dupe_rids(self) -> None:
-        """
-        Adds constraint: No duplicate cars in a round
-        (without this, the same car with different tunes could be selected for multiple tracks or
-        different tunes used across the whole challenge with incorrect penalty).
-
-        For each car rid, the sum of uses of that rid is 1 or 0 (<=1).
-        """
+    def _constraint_no_duplicate_rids(self) -> None:
+        """The same car (by rid) cannot be used more than once across the challenge."""
         for car_rid, car_indexes in self.car_rid_groups.items():
-            rid_uses = [self.y[car_index] for car_index in car_indexes]
-            self.problem.addConstraint(pulp.lpSum(rid_uses) <= 1, f"One_car_per_rid_{car_rid}")
+            self.problem.addConstraint(
+                pulp.lpSum([self.y[i] for i in car_indexes]) <= 1,
+                f"One_car_per_rid_{car_rid}",
+            )
 
     @timer
     def _add_constraints(self) -> None:
-        """Adds all constraints to problem."""
+        """Adds all constraints to the problem."""
         self._constraint_x_y_link()
-        self._constraint_one_car_one_track()
-        self._constraint_one_car_use_per_round()
+        self._constraint_one_car_per_track()
+        self._constraint_one_car_per_round()
         self._constraint_round_success()
-        self._constraint_within_rq_lim()
-        self._constraint_correct_restrictions()
-        self._constraint_no_dupe_rids()
+        self._constraint_rq_limit()
+        self._constraint_restrictions()
+        self._constraint_no_duplicate_rids()
 
     @timer
-    def build_problem(self):
-        """Constructs the PuLP problem."""
+    def build_problem(self) -> None:
+        """Constructs the full PuLP problem."""
+        self._build_car_rid_groups()
         self._initialise_variables()
         self._add_objective()
         self._add_constraints()
 
     # endregion
 
-    # region Solving
+    # region Solve
 
-    def _get_assigned_car(self, round_key: str, race_num: int):
-        """Gets the index (key for self.data) of the assigned car."""
-        for car_track_tup, car_track_assigned in self.x.items():
-            if car_track_tup[1] == f"{round_key}.{race_num}":
-                if pulp.value(car_track_assigned) == 1:
-                    return car_track_tup[0]
+    def _get_assigned_car(self, round_key: str, race_num: int) -> int | None:
+        """Returns the car_key of the car assigned to a specific race, or None."""
+        for (car_key, track_id), var in self.x.items():
+            if track_id == f"{round_key}.{race_num}" and pulp.value(var) == 1:
+                return car_key
         return None
 
     def _build_round_df(self, round_key: str, round_info: dict) -> pd.DataFrame:
         """Builds the results DataFrame for a single round."""
         round_restrictions = list(round_info["Restrictions"].keys())
-        cols = PRINT_COLS + round_restrictions
         rows = []
-
-        # Iterate through each race in the round
         for race_num, (track_name, challenge_time) in round_info["Tracks"].items():
             car_index = self._get_assigned_car(round_key, race_num)
             if car_index is None:
                 continue
-
             car_data = self.data[car_index]
-            row = {
-                "Index": car_index,
-                "Year": car_data["year"],
-                "RQ": car_data["rq"],
-                "Make": car_data["make"],
-                "Model": car_data["model"],
-                "Track": track_name,
-                "Challenge Time": challenge_time,
-                "Track Time": self.encoded_df.loc[car_index][track_name],
-                "Points": car_data[f"{round_key}.{race_num}"],
-                "Engine Up": car_data["engine_up"],
-                "Weight Up": car_data["weight_up"],
-                "Chassis Up": car_data["chassis_up"],
-                "Penalty": car_data["penalty"],
-                "Version": car_data["car_version"],
-                **{restriction: car_data[restriction] for restriction in round_restrictions},
-            }
-            rows.append(row)
+            rows.append(
+                {
+                    "Index": car_index,
+                    "RQ": car_data["rq"],
+                    "Rid": car_data["rid"],
+                    "Track": track_name,
+                    "Challenge Time": challenge_time,
+                    "Track Time": self.encoded_df.loc[car_index][track_name],
+                    "Points": car_data[f"{round_key}.{race_num}"],
+                    "Engine Up": car_data["engine_up"],
+                    "Weight Up": car_data["weight_up"],
+                    "Chassis Up": car_data["chassis_up"],
+                    "Penalty": car_data["penalty"],
+                    "Version": car_data["car_version"],
+                    **{r: car_data[r] for r in round_restrictions},
+                }
+            )
+        return pd.DataFrame(rows, columns=PRINT_COLS + round_restrictions)
 
-        return pd.DataFrame(rows, columns=cols)
+    def _extract_results(self) -> None:
+        """Populates self.round_dfs and self.cars_used from solved x/y variables."""
+        cars_used_set: set[int] = set()
+        for round_key, round_info in self.challenge_dict.items():
+            round_df = self._build_round_df(round_key, round_info)
+            self.round_dfs[round_key] = round_df
+            cars_used_set.update(round_df["Index"].tolist())
+        self.cars_used = sorted(
+            cars_used_set,
+            key=lambda i: (self.data[i]["rq"], self.data[i]["rid"]),
+            reverse=True,
+        )
 
-    def print_round_summary(self, round_df: pd.DataFrame, round_key: str, rq_lim: int) -> None:
-        """Prints information about a specific challenge round."""
+    @timer
+    def solve(self) -> bool:
+        """
+        Solves the challenge and populates self.status, self.objective_value,
+        self.round_dfs, and self.cars_used.
+        Returns True if an optimal solution was found.
+        """
+        print(f"Solving: {self.challenge_cat} {self.challenge_num}")
+        self.problem.solve(
+            pulp.PULP_CBC_CMD(timeLimit=self.time_limit, msg=True, logPath="cbc.log")
+        )
+        self.status = pulp.LpStatus[self.problem.status]
+
+        if self.status != "Optimal":
+            print(f"Status: {self.status}")
+            return False
+
+        self.objective_value = pulp.value(self.problem.objective)
+        print(self.objective_value)
+        self._extract_results()
+        self.print_result()
+        return True
+
+    # endregion
+
+    # region Print
+
+    def _print_car(self, car_index: int, show_ups: bool = False) -> None:
+        """Prints a single car with coloured RQ."""
+        cd = self.data[car_index]
+        colour = get_rq_colour(cd["rq"])
+        rq_str = f"\033[48;5;{colour}m[{cd['rq']}]\033[0m"
+        line = f"{rq_str} {cd['rid']} (V{cd['car_version']}): {cd['penalty']}"
+        if show_ups:
+            line += f" - {cd['engine_up']}{cd['weight_up']}{cd['chassis_up']}"
+        print(line)
+
+    def print_round(self, round_key: str) -> None:
+        """Prints the results DataFrame and summary for a single round."""
+        round_df = self.round_dfs[round_key]
+        round_info = self.challenge_dict[round_key]
         print(f"Round {round_key}:")
-        print(round_df)
+        print(round_df.to_string(index=False))
         print(
             f"{round_df['Points'].sum()} pts. "
             f"Penalty: {int(round_df['Penalty'].sum())}. "
-            f"RQ Used: {round_df['RQ'].sum()} / {rq_lim}"
+            f"RQ Used: {round_df['RQ'].sum()} / {round_info['RQ limit']}"
         )
         print()
 
-    def _print_car(self, car_index: int, show_ups: bool) -> None:
-        """Prints details about a specific car"""
-        car_data = self.data[car_index]
-        rq = car_data["rq"]
-        year = car_data["year"]
-        mm = car_data["make_model"]
-        vers = car_data["car_version"]
-        pen = car_data["penalty"]
-        colour = get_rq_colour(rq)
-        rq_coloured = f"\033[48;5;{colour}m[{rq}]\033[0m"
-        line = f"{year} {rq_coloured} {mm} (Version {vers}): {pen}"
-        if show_ups:
-            eng = car_data["engine_up"]
-            wei = car_data["weight_up"]
-            cha = car_data["chassis_up"]
-            ups = f"{eng}{wei}{cha}"
-            line += f" - {ups}"
-        print(line)
-
-    def _get_and_print_results(self):
-        """Prints round DataFrame for each round and returns list of results."""
-        results = []
-        cars_used_indices = []
-
-        for round_key, round_info in self.challenge_dict.items():
-            round_df = self._build_round_df(round_key, round_info)
-            self.print_round_summary(round_df, round_key, round_info["RQ limit"])
-            results.append(round_df)
-            cars_used_indices.extend(round_df["Index"].tolist())
-
-        return results, cars_used_indices
-
-    def _print_cars_used(self, cars_used: list) -> list:
-        """
-        Prints all cars used, then all cars with penalty again.
-        Returns list of details of cars used.
-        """
-        cars_with_penalty = [i for i in cars_used if self.data[i]["penalty"] > 0]
-
+    def print_cars_used(self) -> None:
+        """Prints all cars used, then just ones with a penalty."""
         print("Cars used:")
-        cars_used_info = []
-        for car_index in cars_used:
-            self._print_car(car_index, False)
-            cd = self.data[car_index]
-            cars_used_info.append((cd["rq"], cd["make_model"], cd["car_version"], cd["penalty"]))
+        for car_index in self.cars_used:
+            self._print_car(car_index)
 
-        print()
-        if not cars_with_penalty:
-            print("No cars with penalty.")
+        penalised = [i for i in self.cars_used if self.data[i]["penalty"] > 0]
+        if not penalised:
+            print("\nNo cars with penalty.")
         else:
-            print("Cars with penalty:")
-            for car_index in cars_with_penalty:
+            print("\nCars with penalty:")
+            for car_index in penalised:
                 self._print_car(car_index, show_ups=True)
 
-        return cars_used_info
-
-    @timer
-    def solve(self) -> tuple[bool, float | None, list | None, list | None]:
-        """Solves the challenge, printing and returning results."""
-        print(f"Solving challenge: {self.challenge_cat} ({self.challenge_num})")
-
-        self.problem.solve(pulp.PULP_CBC_CMD(timeLimit=self.time_limit))
-        status = pulp.LpStatus[self.problem.status]
-        print("Status:", status)
-
-        if status != "Optimal":
-            return False, None, None, None
-
-        obj_val = pulp.value(self.problem.objective)
-        print("Objective value:", obj_val)
-
-        results, cars_used_indices = self._get_and_print_results()
-
-        cars_used = sorted(
-            set(cars_used_indices),
-            key=lambda i: (self.data[i]["rq"], self.data[i]["make"]),
-            reverse=True,
-        )
-        cars_used_info = self._print_cars_used(cars_used)
-
-        return True, obj_val, results, cars_used_info  # type: ignore
+    def print_result(self) -> None:
+        """Prints the full solve result: status, rounds, and cars used."""
+        if self.status != "Optimal":
+            print(f"No solution found. Status: {self.status}")
+            return
+        print(f"Objective value: {self.objective_value}")
+        for round_key in self.round_keys:
+            self.print_round(round_key)
+        self.print_cars_used()
 
     # endregion

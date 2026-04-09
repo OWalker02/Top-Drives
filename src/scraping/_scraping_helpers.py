@@ -1,140 +1,155 @@
-"""Helper functions for scrapers.py"""
+import json
+import os
+from datetime import datetime
 
-import numpy as np
-from selenium.webdriver.common.by import By
-from selenium.webdriver.remote.webelement import WebElement
+import requests
+from requests import Session
 
-from config.challenge import CONDITION_MAP
-
-
-def _get_other_conditions(track_div: WebElement) -> str:
-    """Returns condition suffix string ' (C)', ' (R)', or '' for a track div."""
-    i_elements = track_div.find_elements(By.TAG_NAME, "i")
-    if i_elements:
-        i_class = i_elements[0].get_attribute("class") or ""
-        if "tdicon-clearance" in i_class.split(" "):
-            return " (C)"
-        elif "tdicon-roll" in i_class.split(" "):
-            return " (R)"
-    return ""
+from config.paths import RAW_TAS_PATH, TRACK_UPPERS_PATH
+from config.scraping import BASE_URL, FILTER_STRS
 
 
-def _split_into_groups(car_count: int) -> list[tuple[int, int]]:
+def _filter_str(unfiltered: str, filter_key: str) -> str:
+    """Uses strings from FILTER_KEYS to filter the string."""
+    start_str, inc_start, end_str, inc_end = FILTER_STRS[filter_key]
+
+    start_i = unfiltered.find(start_str)
+    if not inc_start:
+        start_i += len(start_str)
+    end_i = unfiltered.find(end_str, start_i)
+    if inc_end:
+        end_i += len(end_str)
+
+    return unfiltered[start_i:end_i]
+
+
+def _get_index_comp_urls() -> tuple[str, str]:
     """
-    Splits car_count into groups of 7, using 8 where needed to avoid remainders.
-    Falls back to variable-size final group if unsolvable.
+    Scrapes the main TDR page to get the current index and components urls, returns (components,
+    index).
     """
-    groups = []
-    if car_count % 7 == 0:
-        for i in range(0, car_count, 7):
-            groups.append((i, i + 7))
+
+    r = requests.get(BASE_URL, timeout=10)
+    base = r.text
+
+    components_url = f"{BASE_URL}{_filter_str(base, 'components')}"
+    index_url = f"{BASE_URL}{_filter_str(base, 'index')}"
+
+    return components_url, index_url
+
+
+def _get_track_maps(index_full: str) -> dict:
+    """Extracts mapping of track ids (e.g. "drag30130") to names ("30-130mph (R)")"""
+
+    all_maps = _filter_str(index_full, "id_name_maps")
+
+    track_maps_str = [m for m in all_maps[1:-1].split(",") if m.startswith("t_")]
+    track_maps = {m.split(":")[0][2:]: m.split(":")[1][1:-1] for m in track_maps_str}
+
+    return track_maps
+
+
+def _get_uppers_map(index_full: str) -> dict:
+    """Extracts upper points limits for tracks."""
+
+    codes_str = _filter_str(index_full, "track_upper_codes")[:-4]
+    codes = {c.split("=")[0]: c.split("=")[1] for c in codes_str.split(",")}
+
+    tracks_str = _filter_str(index_full, "track_upper_map")[1:-1]
+    tracks = {t.split(":")[0]: t.split(":")[1] for t in tracks_str.split(",")}
+
+    uppers_map = {k_t: int(float(codes[v_t])) for k_t, v_t in tracks.items()}
+
+    with open(TRACK_UPPERS_PATH, "w", encoding="utf-8") as f:
+        json.dump(uppers_map, f)
+
+    return uppers_map
+
+
+def _scrape_car(session: Session, rid: str) -> list[dict] | None:
+    """Scrapes one car from its rid, returning a list of dicts, one for each tune."""
+    r = session.get(f"https://api.topdrivesrecords.com/car/{rid}", timeout=10).text
+    if not r:
+        return None
+    car_data = json.loads(r)["data"]
+    car_dicts = []
+
+    # Loop through all tunes in car data
+    for tune, tune_dict in car_data.items():
+        if tune.startswith("v"):
+            continue
+
+        info = tune_dict.get("info", {})
+        times = tune_dict.get("times", {})
+
+        # Start with stats
+        stats_dict = {
+            "rid": rid,
+            "top_speed": info.get("topSpeed", {"t": "-"})["t"],
+            "zero_sixty": info.get("acel", {"t": "-"})["t"],
+            "handling": info.get("hand", {"t": "-"})["t"],
+            "engine_up": tune[0],
+            "weight_up": tune[1],
+            "chassis_up": tune[2],
+        }
+        # Then times
+        just_times = {
+            track_id: track_dict["t"] for track_id, track_dict in times.items() if "t" in track_dict
+        }
+
+        car_dicts.append(stats_dict | just_times)
+
+    return car_dicts
+
+
+def _load_raw_tas() -> dict:
+    """
+    Loads existing raw times and stats JSON dict from config.paths.RAW_TAS_PATH, or returns empty
+    dict if file does not exist.
+    """
+    if os.path.isfile(RAW_TAS_PATH):
+        with open(RAW_TAS_PATH, "r", encoding="utf-8") as f:
+            tas = json.load(f)
     else:
-        solved = False
-        max_eights = car_count // 8  # Check the max number of groups size 8
-        # Check all combos of groups of size 7 and 8
-        for num_add_one in range(1, max_eights + 1):
-            # If using this combo works, make it
-            if (car_count - num_add_one * 8) % 7 == 0:
-                for i in range(0, car_count - num_add_one * 8, 7):
-                    groups.append((i, i + 7))
-                for j in range(car_count - num_add_one * 8, car_count, 8):
-                    groups.append((j, j + 8))
-                solved = True
-                break
-        if not solved:
-            for i in range(0, car_count, 7):
-                groups.append((i, min(i + 7, car_count)))
-    return groups
+        tas = {}
+    return tas
 
 
-def _get_challenge_name(challenge_element: WebElement) -> str:
-    challenge_span = challenge_element.find_element(By.XPATH, "./div/span")
-    right_span = challenge_span.find_element(By.XPATH, "./span")
-    name_start = right_span.get_attribute("innerHTML").strip()  # type: ignore
-    name_end = challenge_span.get_attribute("innerHTML").split(">")[-1].strip()  # type: ignore
-    return f"{name_start} {name_end}"
+def _save_raw_tas(tas_dicts: dict) -> None:
+    """Saves tas_dicts to config.paths.RAW_TAS_PATH."""
+    with open(RAW_TAS_PATH, "w", encoding="utf-8") as f:
+        json.dump(tas_dicts, f)
 
 
-def _split_car_row_html(car_row_html: str, tune: tuple[int, int, int]) -> dict[str, str]:
-    """Parses a car row's HTML and returns a dict of core stats and tune values."""
-    stats = car_row_html.split("Car_HeaderBackDropRight")[1].split('Car_HeaderStatValue">')[1:]
-    stats = [s.split("<")[0] for s in stats]
-    stats_dict = {
-        "rq": car_row_html.split('BaseCard_Header2Right2">')[1].split("</div>")[0].strip(),
-        "make": car_row_html.split("</b>")[1].split("</div>")[0].strip(),
-        "model": car_row_html.split('_Header2Bottom">')[1].split("</div>")[0].strip(),
-        "make_model": (
-            car_row_html.split('class="Car_HeaderName')[1].split(">")[1].split("</div")[0].strip()
-        ),
-        "year": (
-            car_row_html.split('Car_HeaderBlockYear"')[1].split(">")[1].split("</div")[0].strip()
-        ),
-        "top_speed": stats[0],
-        "zero_sixty": stats[1],
-        "handling": stats[2],
-        "engine_up": tune[0],
-        "weight_up": tune[1],
-        "chassis_up": tune[2],
+def _scraped_recently(date_str: str, bound: int) -> bool:
+    """
+    Given a string datetime in format %Y-%m-%d-%H:%M, and a bound, returns True/False if datetime
+    is recent.
+    """
+    now = datetime.today()
+    then = datetime.strptime(date_str, "%Y-%m-%d-%H:%M")
+    delta = now - then
+    if delta.total_seconds() >= bound:
+        return False
+    else:
+        return True
+
+
+def _update_and_save(old_tas: dict, new_tas: dict) -> None:
+    """Updates old tas with new tas and saves."""
+    old_tas.update(new_tas)
+    _save_raw_tas(old_tas)
+
+
+def _filter_ci_dicts(ci_dicts: list[dict], tas_dicts: dict, skip_seconds: int):
+    """Filters ci_dicts to just those that have not been updated recently"""
+    # tas_dicts = {rid: {'rid': rid, 'updated': "%Y-%m-%d", ...}, ...}
+    # ci_dicts = [{'rid': rid, ...}, ...]
+
+    updated_recently = {
+        rid
+        for rid, tas_dict in tas_dicts.items()
+        if _scraped_recently(tas_dict["updated"], skip_seconds)
     }
-    return stats_dict
 
-
-def _get_rq_limit(soup):
-    """Extracts a round's RQ limit from a page soup."""
-    return int(soup.find(class_="Cg_RqText").get_text().split("/")[1])
-
-
-def _convert_to_seconds(time_str):
-    """
-    Tries to convert a string in format "MM:SS:ds" to a float, returning np.inf if invalid string
-    passed.
-    """
-    try:
-        time_in_seconds = 0
-        time_in_seconds += float(time_str.split(":")[0]) * 60  # minutes to seconds
-        time_in_seconds += float(time_str.split(":")[1])  # seconds
-        time_in_seconds += float(time_str.split(":")[2]) / 100  # deci-
-        time_in_seconds = round(time_in_seconds, 2)
-        return round(float(time_in_seconds), 2)
-    except (ValueError, IndexError, AttributeError):
-        return np.inf
-
-
-def _get_restrictions(challenge_info, r):
-    """Extracts the restrictions for a specific round."""
-    restrictions = {}
-    rq_range = [0, 150]
-    for restriction, value_tuples in challenge_info["challenge_restrictions"].items():
-        # Find the tuple for the current round
-        for value_tuple in value_tuples:
-            if value_tuple[0][0] <= r + 1 <= value_tuple[0][1]:
-                # If rq involved, treat differently
-                if "RQ range" in restriction:
-                    rq_range = [int(rq) for rq in restriction.split(" ")[2:]]
-                else:
-                    restrictions[restriction] = value_tuple[1]
-    return restrictions, rq_range
-
-
-def _get_track_name(track, t, row_contents):
-    name_base = row_contents[t * 3]
-    if name_base.endswith("%"):
-        name_base = name_base[:-3]
-
-    extra = ""
-    if track.find(class_="tdicon-roll"):
-        extra = " (R)"
-    elif track.find(class_="tdicon-clearance"):
-        extra = " (C)"
-
-    track_id = track.get("data")
-    condition = CONDITION_MAP[track_id.split("_")[-1][1:]]
-
-    return f"{name_base}{extra} / {condition}"
-
-
-def _get_track_time(track_name, t, row_contents):
-    if track_name.startswith("Test"):
-        return int(row_contents[t * 3 + 1])
-    else:
-        return _convert_to_seconds(row_contents[t * 3 + 1])
+    return [ci_dict for ci_dict in ci_dicts if ci_dict["rid"] not in updated_recently]

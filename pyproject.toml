@@ -3,7 +3,7 @@
 name = "Top-Drives"
 version = "0.1.0"
 description = "Data Collection (from topdrivesrecords.com) for local challenge optimisation and garage analysis"
-requires-python = ">= 3.12"
+requires-python = ">= 3.10"
 dependencies = [
     "beautifulsoup4",
     "numpy",
@@ -17,6 +17,7 @@ dependencies = [
 
 
 # Optional dependencies
+[project.optional-dependencies]
 dev = [
     "ipykernel",    # jupyter
     "pre-commit",

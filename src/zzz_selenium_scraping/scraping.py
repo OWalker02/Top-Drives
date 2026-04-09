@@ -9,8 +9,8 @@ import pandas as pd
 
 from config.paths import RAW_SCRAPED_JSON_PATH
 from config.scraping import CORE_KEYS
-from src.scraping.scrapers import TDRScraper
 from src.utils.timer import timer
+from src.zzz_selenium_scraping.scrapers import TDRScraper
 
 
 @timer

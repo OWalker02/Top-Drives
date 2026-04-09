@@ -4,7 +4,7 @@ NON_TRACK_COLS = [
     "rq",
     "make",
     "model",
-    "make_model",
+    "rid",
     "year",
     "top_speed",
     "zero_sixty",
@@ -46,14 +46,14 @@ PENALTIES = {
 TEMP_COLS = ["engine_diff", "weight_diff", "chassis_diff", "ups_left"]
 
 SIMPLE_ENCODE_COLS = [
-    "rarity",
+    "class",
     "country",
     "tyres",
     "drive",
     "clearance",
     "fuel",
     "seats",
-    "engine_pos",
-    "brakes",
-    "make",
+    "engine",
+    "brake",
+    "brand",
 ]
