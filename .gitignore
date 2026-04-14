@@ -4,10 +4,12 @@ __pycache__/
 .ruff_cache/
 *.pkl
 temp/*
+notebooks/cbc.log
+
 # Ignore everything in data (but not the folder itself)
 data/*
-# Un-ignore the misc folder and everything in it
-!data/misc
+# Un-ignore the tracks folder and everything in it
+!data/tracks
 # Un-ignore the ownership folder
 !data/ownership
 # Ignore everything in the ownership folder

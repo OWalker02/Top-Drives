@@ -30,7 +30,7 @@ def _convert_cols(df: pd.DataFrame, cols: list[str], dtype: type) -> pd.DataFram
 
     for col in cols:
         if dtype is bool:
-            df[col] = df[col] == "Yes"
+            df[col] = df[col] == "true"
         else:
             df[col] = df[col].astype(dtype, errors="ignore")
     return df

@@ -7,6 +7,7 @@ from requests import Session
 
 from config.paths import RAW_TAS_PATH, TRACK_UPPERS_PATH
 from config.scraping import BASE_URL, FILTER_STRS
+from src.utils.timer import timer
 
 
 def _filter_str(unfiltered: str, filter_key: str) -> str:
@@ -66,6 +67,7 @@ def _get_uppers_map(index_full: str) -> dict:
     return uppers_map
 
 
+@timer
 def _scrape_car(session: Session, rid: str) -> list[dict] | None:
     """Scrapes one car from its rid, returning a list of dicts, one for each tune."""
     r = session.get(f"https://api.topdrivesrecords.com/car/{rid}", timeout=10).text

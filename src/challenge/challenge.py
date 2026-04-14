@@ -23,7 +23,7 @@ from src.utils.timer import timer
 def load_challenge_dict(challenge_info: dict) -> dict:
     """Loads challenge_dict for specific challenge_cat & challenge_num."""
     with open(
-        CHALLENGES_DIR / f"{challenge_info['name']}.json",
+        CHALLENGES_DIR / challenge_info["category"] / f"{challenge_info['name']}.json",
         encoding="utf-8",
     ) as f:
         return json.load(f)
@@ -48,6 +48,7 @@ def get_challenge_info(challenge_cat: str, challenge_num: int) -> dict:
 
     # Combine
     challenge_info = {
+        "category": challenge_cat,
         "name": name_pref + name_suf,
         "start_round": spec_dict.get("sr", base_sr),
         "end_round": spec_dict.get("er", base_er),
@@ -74,6 +75,7 @@ def make_challenge_df(
     # challenge_setup = get_challenge_setup(encoded_df, challenge_cat, challenge_num, only_owned)
     challenge_info = get_challenge_info(challenge_cat, challenge_num)
     challenge_dict = load_challenge_dict(challenge_info)
+    print(challenge_dict)
 
     # Set up df
     copy_cols = _get_copy_cols(encoded_df)

@@ -4,6 +4,7 @@ from collections import defaultdict
 
 import pandas as pd
 import pulp
+from pulp import LpAffineExpression
 
 from config.challenge import PRINT_COLS
 from src.challenge.challenge import (
@@ -12,8 +13,6 @@ from src.challenge.challenge import (
     load_filtered_challenge_dict,
 )
 from src.utils.timer import timer
-
-"""Solver for TD Challenges using PuLP."""
 
 
 class ChallengeSolver:
@@ -28,7 +27,6 @@ class ChallengeSolver:
         challenge_df: pd.DataFrame,
         challenge_cat: str,
         challenge_num: int,
-        only_owned: bool = False,
         time_limit: int = 600,
     ):
         """
@@ -42,7 +40,7 @@ class ChallengeSolver:
         """
         # Data
         self.encoded_df = encoded_df
-        self.data = challenge_df.to_dict(orient="index")
+        self.data: dict[int, dict] = challenge_df.to_dict(orient="index")  # type: ignore
 
         # Challenge config
         self.challenge_cat = challenge_cat
@@ -51,6 +49,8 @@ class ChallengeSolver:
         self.challenge_dict = load_filtered_challenge_dict(self.challenge_info)
 
         # Keys
+        print(type(self.data.keys()))
+        print(self.data.keys())
         self.car_keys: list[int] = list(self.data.keys())
         self.round_keys: list[str] = list(self.challenge_dict.keys())
         self.track_ids: list[str] = [f"{r}.{i + 1}" for r in self.round_keys for i in range(5)]
@@ -66,7 +66,7 @@ class ChallengeSolver:
 
         # Set by solve()
         self.status: str = "Not solved"
-        self.objective_value: float | None = None
+        self.objective_value: LpAffineExpression | float | None = None
         self.round_dfs: dict[str, pd.DataFrame] = {}
         self.cars_used: list[int] = []
 
@@ -273,7 +273,6 @@ class ChallengeSolver:
         self.objective_value = pulp.value(self.problem.objective)
         print(self.objective_value)
         self._extract_results()
-        self.print_result()
         return True
 
     # endregion

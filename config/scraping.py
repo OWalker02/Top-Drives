@@ -9,6 +9,8 @@ CORE_KEYS = {
 
 BASE_URL = "https://www.topdrivesrecords.com"
 
+CHALLENGE_URL = "https://charlie.topdrivesrecords.com/getCgById"
+
 FILTER_STRS = {
     "index": ('crossorigin src="', False, '">', False),
     "components": ('modulepreload" crossorigin href="', False, '">', False),

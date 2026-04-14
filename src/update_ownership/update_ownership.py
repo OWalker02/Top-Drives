@@ -81,9 +81,7 @@ def _get_tune(td: dict) -> str:
 
 
 @timer
-def create_new_big_list(
-    all_owned_matched: list, lowest_unlocked: int = 0, raise_no_match: bool = True
-) -> list:
+def create_new_big_list(all_owned_matched: list, lowest_unlocked: int = 0) -> list:
     """Creates one list of all owned cars (all locked and all unlocked above a certain RQ)."""
     new_big_list = []
     unlocked = []
@@ -95,9 +93,6 @@ def create_new_big_list(
     for td, tdr in all_owned_matched:
         rid = tdr["rid"].encode("utf-8").decode("latin-1")
         rq = ci_dict[rid]["rq"]
-
-        if rq == 0:  # Only possible if not raise_no_match
-            continue
 
         # Skip unlocked cars past a certain RQ
         if rq < lowest_unlocked and not td["locked"]:

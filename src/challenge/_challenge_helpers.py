@@ -18,7 +18,7 @@ def _get_copy_cols(df: pd.DataFrame) -> list:
     copy_prefixes = COPY_COLS["col_prefix"]
     for col in df.columns:
         if any(col.startswith(pref) for pref in copy_prefixes):
-            if col in ["make_model", "make"]:
+            if col in ["make_model", "make", "engine_up"]:
                 continue
             copy_cols.append(col)
     return copy_cols
@@ -61,9 +61,7 @@ def _get_universal_restrictions(challenge_dict: dict, all_restrictions: set) -> 
 
 
 # region DF Creation
-def _calc_points(
-    track_time: float, track_name: str, time_to_beat: float, track_uppers: dict
-) -> int:
+def _calc_points(track_time: float, track_name: str, time_to_beat: float, upper: float) -> int:
     """Calculates the points scored by track_time against time_to_beat on a certain track."""
     # Convert 0 -> np.inf
     track_time = np.inf if track_time == 0 else track_time
@@ -72,8 +70,6 @@ def _calc_points(
     # If nan, assume loss
     if pd.isna(track_time):
         return -50
-
-    upper = track_uppers[track_name.split("_")[0]]
 
     # Different function for test bowl
     if "Test Bowl" in track_name:
@@ -94,6 +90,22 @@ def _calc_points(
     else:
         # pts = upper * (-1 / (x + 1) + 1)
         # x = (lose - win) / win
+
+        # Check for DNFs
+        try:
+            if time_to_beat < 0.1:
+                if track_time < 0.1:  # Both DNF, assume loss
+                    return -50
+                else:
+                    return 250  # Challenge is DNF, car completes track
+            elif track_time < 0.1:
+                # Already handled both DNF case, so challnge_time is not DNF
+                return -250
+        except Exception as e:
+            print(track_name, time_to_beat, track_time)
+            raise e
+
+        # Now calculate points if both finish
         win = min(track_time, time_to_beat)
         lose = max(track_time, time_to_beat)
         if lose == np.inf:
@@ -173,10 +185,11 @@ def _make_track_cols(
         round_i = int(round_i)
         if round_i < sr or round_i > er:
             continue
-        for track_j, (track_name, track_time) in round_dict["Tracks"].items():
+        for track_j, (track_name, target_time) in round_dict["Tracks"].items():
             # Add column to dict
+            track_upper = track_uppers[track_name.split("_")[0]]
             track_col = encoded_df[track_name].apply(
-                _calc_points, args=(track_name, track_time, track_uppers)
+                _calc_points, args=(track_name, target_time, track_upper)
             )
             track_cols[f"{round_i}.{track_j}"] = track_col
     return track_cols
@@ -234,6 +247,8 @@ def _filter_challenge_df(
     only_owned: bool,
 ) -> pd.DataFrame:
     """Filters the challenge DataFrame to remove unnecessary rows."""
+    challenge_df = challenge_df.reset_index(drop=True)
+
     if only_owned:
         return challenge_df[challenge_df["owned"]]
 

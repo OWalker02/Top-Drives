@@ -36,7 +36,12 @@ FLOAT_COLS = ["top_speed", "zero_sixty", "handling", "mra"]
 
 BOOL_COLS = ["prize", "abs", "tcs"]
 
-REDUCE_PENALTY_TAGS = ["prize", "tag_year_of_the_Horsepower"]
+REDUCE_PENALTY_TAGS = [
+    "prize",
+    "tag_Touma's_Collection_2",
+    "tag_Gunter's_Collection_2",
+    "tag_Ministry_of_Racing",
+]
 
 PENALTIES = {
     "unowned": {"S": 100000, "A": 20000, "B": 3000, "C": 750, "D": 300, "E": 100, "F": 150},
@@ -56,4 +61,5 @@ SIMPLE_ENCODE_COLS = [
     "engine",
     "brake",
     "brand",
+    "prize",
 ]

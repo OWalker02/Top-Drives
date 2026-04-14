@@ -137,6 +137,7 @@ def scrape(
                 pbar = tqdm(range(len(class_dicts)), desc=f"  Scraping Class {car_class}")
 
             car_dicts = _scrape_car(session, rid)
+
             if car_dicts:
                 new_tas[rid] = {
                     "updated": datetime.today().strftime("%Y-%m-%d-%H:%M"),
@@ -144,11 +145,12 @@ def scrape(
                 }
             else:
                 new_tas[rid] = {"updated": datetime.today().strftime("%Y-%m-%d-%H:%M"), "dicts": []}
+
             pbar.update(1)  # type: ignore
             rand_delay = np.random.gamma(shape=8, scale=0.1) * delay * 10 / 8
             time.sleep(rand_delay)
 
-            if i % 100:
+            if i % 100 == 0:
                 _update_and_save(tas_dicts, new_tas)
 
     except Exception as e:

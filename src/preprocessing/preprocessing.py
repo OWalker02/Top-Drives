@@ -11,7 +11,6 @@ from sklearn.preprocessing import MultiLabelBinarizer
 
 from config.paths import OWNED_PATH, RAW_CI_PATH, RAW_TAS_PATH
 from config.preprocessing import (
-    BOOL_COLS,
     FLOAT_COLS,
     INT_COLS,
     SIMPLE_ENCODE_COLS,
@@ -78,7 +77,7 @@ def _convert_col_types(df: pd.DataFrame) -> pd.DataFrame:
 
     df = _convert_cols(df, INT_COLS, int)
     df = _convert_cols(df, FLOAT_COLS, float)
-    df = _convert_cols(df, BOOL_COLS, bool)
+    # df = _convert_cols(df, BOOL_COLS, bool)
 
     return df
 
@@ -188,11 +187,11 @@ def encode_df(df: pd.DataFrame) -> pd.DataFrame:
 
     # One-hot encode all simple columns
     # Get make col to add back in
-    make = df["brand"]
+    brand = df["brand"]
     for col in SIMPLE_ENCODE_COLS:
         df[col] = df[col].astype("category")
         df = pd.get_dummies(df, columns=[col], prefix=col, dtype="int")
-    df["brand"] = make
+    df["brand"] = brand
 
     # Encode tags & body
     for list_col in [{"col": "tags", "pref": "tag"}, {"col": "bodyTypes", "pref": "body"}]:

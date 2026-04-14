@@ -10,7 +10,7 @@ Top Drives is a card-collecting racing game where players build a garage of cars
 
 This project:
 
-- **Scrapes** car stats and track times from topdrivesrecords.com using Selenium
+- **Scrapes** car stats and track times from topdrivesrecords.com using requests
 - **Preprocesses** raw scraped data into a clean, analysis-ready DataFrame
 - **Scrapes challenge data** (tracks, RQ limits, restrictions) for a given challenge
 - **Solves** the car assignment problem using linear programming (PuLP), finding the optimal lineup with minimum penalty
@@ -36,28 +36,32 @@ TDR/
 ├── data/ . . . . . . . . . . . . . . # All data files, jsons/csvs
 │   ├── cache/                        # Scraping progress json (gitignored)
 │   ├── challenges/                   # Scraped challenge JSON files (gitignored)
-│   ├── misc/                         # Static reference data (e.g. track_uppers.json) (not
-|   |                                 # gitignored)
 │   ├── ownership/                    # Json files from intercepted http requests (one from the
 |   |                                 # game, one from TDR), and one to use to add ownership info
 |   |                                 # to data (gitignored except owned_cars.json for example on
 |   |                                 # how the project runs)
 │   ├── processed/                    # Preprocessed csv files (gitignored)
-│   └── raw/                          # Raw scraped JSON (gitignored)
+│   ├── raw/                          # Raw scraped JSON (gitignored)
+│   ├── tdr/                          # Stores the requested js component files (gitignored)
+│   └── tracks/                       # Information about tracks
 │
 |
 |
 ├── notebooks/. . . . . . . . . . . . # Jupyter notebooks (runners only, logic lives in src/)
-│   ├── car_scraping.ipynb            # Scrapes car data (info + times) on TDR
+│   ├── car_scraping.ipynb            # Scrapes car data (info + times) on TDR (using requests)
 │   ├── challenge_scraping.ipynb      # Scrapes information on a challenge (tracks + times) using
-|   |                                 # restrictions from config/challenge/CHALLENGE_INFO
+|   |                                 # restrictions from config/challenge/CHALLENGE_INFO (using
+|   |                                 # requests)
 │   ├── challenge.ipynb               # Solves a challenge (provided the challenge data has been
 |   |                                 # scraped)
 │   ├── preprocess.ipynb              # Takes raw scraped json data and produces a preprocessed csv
 |   |                                 # with ownership info & penalties, and a one-hot encoded
 |   |                                 # version of this csv too
-│   └── update_ownership.ipynb        # Takes json files from data/ownership to create lists of
-|                                     # owned cars
+│   ├── update_ownership.ipynb        # Takes json files from data/ownership to create lists of
+|   |                                 # owned cars
+│   ├── zzz_car_scraping              # Scrapes car data (using Selenium), slower and more error
+|   |                                 # prone than new challenge_scraping.ipynb using requests
+│   └── zzz_challenge_scraping.ipynb  # Scrapes challenge data (using Selenium)
 │
 |
 |
@@ -78,11 +82,16 @@ TDR/
 |   |
 │   ├── scraping/
 │   │   |── _scraping_helpers.py
-│   │   ├── scrapers.py               # TDRScraper & ChallengeScraper classes
-│   │   └── scraping.py
+│   │   ├── car_scraping.py               
+│   │   └── challenge_scraping.py
+|   |
+│   ├── update_ownership/
+│   │   └── update_ownership.py
 │   │
-│   └── utils/
-│       └── timer.py                  # @timer decorator
+│   ├── utils/
+│   |   └── timer.py                  # @timer decorator
+|   |
+│   └── zzz_selenium_scraping/
 │
 |
 |

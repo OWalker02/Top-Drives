@@ -24,7 +24,7 @@ PREPROCESSED_PATH = PROCESSED_DIR / "preprocessed.csv"
 PREPROCESSED_ENC_PATH = PROCESSED_DIR / "preprocessed_enc.csv"
 
 ROOT_CHALLENGES_DIR = DATA / "challenges"
-CHALLENGES_DIR = ROOT_CHALLENGES_DIR / "challenges"
+CHALLENGES_DIR = ROOT_CHALLENGES_DIR / "challenge_dicts"
 SOLUTIONS_DIR = ROOT_CHALLENGES_DIR / "solutions"
 
 TRACKS_DIR = DATA / "tracks"

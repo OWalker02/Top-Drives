@@ -14,46 +14,55 @@ CHALLENGE_INFO = {
         7: {
             "suf": "first_contact_7",
         },
+        8: {
+            "suf": "one_against_many_8",
+            "rest": {"tag_Rogue_Agents": [((1, 10), 5)], "drive_FWD/drive_4WD": [((1, 10), 5)]},
+        },
+        9: {
+            "sr": 10,
+            "suf": "the_system_scatters_9",
+            "rest": {
+                "tag_Rogue_Agents": [((1, 10), 5)],
+                "tyres_Performance/tyres_Slick": [((1, 10), 5)],
+            },
+        },
+        10: {
+            "sr": 10,
+            "suf": "urban_pursuit_10",
+            "rest": {
+                "tag_Rogue_Agents": [((1, 10), 5)],
+            },
+        },
+        11: {
+            "suf": "off_the_beaten_path_11",
+            "rest": {"tag_Rogue_Agents": [((1, 10), 5)], "class_F": [((1, 10), 5)]},
+        },
+        14: {
+            "suf": "the_double_agent_14",
+            "rest": {"tag_Rogue_Agents": [((1, 10), 5)], "class_B": [((1, 10), 5)]},
+        },
+        18: {
+            "suf": "critical_intelligence_18",
+            "rest": {"tag_Crown_Pursuit": [((1, 10), 5)], "class_B": [((1, 10), 5)]},
+        },
+        19: {
+            "suf": "rounding_them_up_19",
+            "rest": {"tag_Crown_Pursuit": [((1, 10), 5)], "rq_range_50_150": [((1, 10), 5)]},
+        },
+        20: {
+            "suf": "costly_vindication_20",
+            "rest": {
+                "tag_Rogue_Agents": [((1, 10), 5)],
+                "rq_range_50_150": [((1, 10), 5)],
+                "prize_False": [((1, 10), 5)],
+            },
+        },
     }
 }
-"""
-CHALLENGE_SETUP = {
-    "Skyline": {
-        "base": {"sr": 1, "er": 10, "useful": lambda df: df["tags_Japan_Pro_Tour"]},
-        4: {
-            "sr": 8,
-            "er": 10,
-            "useful": lambda df: (df["year"] >= 2010) & (df["rq"].between(50, 64)),
-        },
-        7: {},
-    },
-    "Touma": {
-        "base": {"sr": 1, "er": 12, "useful": lambda df: df["tags_Touma's_Collection_2"]},
-        4: {},
-        5: {},
-        6: {},
-        7: {"useful": lambda df: df["rarity_F"]},
-        8: {"useful": lambda df: df["rarity_E"]},
-        9: {"useful": lambda df: df["rarity_D"]},
-        10: {"useful": lambda df: df["rarity_C"]},
-        11: {"useful": lambda df: df["rarity_B"]},
-        12: {"useful": lambda df: df["rq"].between(65, 115)},
-    },
-    "Rogue": {
-        "base": {"sr": 1, "er": 10, "useful": lambda df: df["tag_Ministry_of_Racing"]},
-        6: {
-            "useful": lambda df: (
-                df["tyres_Standard"] | df["tyres_All-surface"] | df["tyres_Off-road"]
-            )
-        },
-    },
-}
-"""
 
 COPY_COLS = {
     "full_col": [
         "rq",
-        "brand",
         "rid",
         "year",
         "engine_up",
