@@ -63,3 +63,5 @@ SIMPLE_ENCODE_COLS = [
     "brand",
     "prize",
 ]
+
+UNIQUE_PENS = {}

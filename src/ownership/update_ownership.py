@@ -2,17 +2,16 @@
 
 import json
 from collections import defaultdict
+from typing import Any
 
-import pandas as pd
-
-from config.paths import OWNED_PATH, PREPROCESSED_PATH, RAW_CI_PATH, TD_JSON_PATH, TDR_JSON_PATH
+from config.paths import (
+    OWNED_DIR,
+    OWNED_PATH,
+    RAW_CI_PATH,
+    TD_JSON_PATH,
+    TDR_JSON_PATH,
+)
 from src.utils.timer import timer
-
-
-def load_preprocessed() -> pd.DataFrame:
-    """Loads DataFrame from PREPROCESSED_PATH."""
-    preprocessed_df = pd.read_csv(PREPROCESSED_PATH)
-    return preprocessed_df
 
 
 def load_garage_jsons() -> dict:
@@ -53,62 +52,41 @@ def match_records() -> list:
     return all_owned_matched
 
 
-def _find_rq(df: pd.DataFrame, rid: str, raise_no_match: bool) -> tuple[int, str, int]:
-    """Use rid to get rq, mm, year, from processed data."""
-    filtered = df[df["rid"].str.startswith(rid)]
-    if filtered.empty:
-        if raise_no_match:
-            raise ValueError(f"No match found for rid: {rid}")
-        else:
-            return (0, "", 0)
-    rq = int(filtered["rq"].iloc[0])
-
-    return rq
-
-
-def _get_tune(td: dict) -> str:
+def _get_tune(car: dict) -> str:
     """Extracts the tune from the car's info"""
-    eng = td["engineMajor"]
-    eng_m = td["engineMinor"]
-    wei = td["weightMajor"]
-    wei_m = td["weightMinor"]
-    cha = td["chassisMajor"]
-    cha_m = td["chassisMinor"]
+    eng = car["engineMajor"]
+    eng_m = car["engineMinor"]
+    wei = car["weightMajor"]
+    wei_m = car["weightMinor"]
+    cha = car["chassisMajor"]
+    cha_m = car["chassisMinor"]
     if (eng, wei, cha) == (1, 1, 1) and (eng_m, wei_m, cha_m) == (0, 0, 0):
         return "000"
     else:
         return f"{eng}{wei}{cha}"
 
 
-@timer
-def create_new_big_list(all_owned_matched: list, lowest_unlocked: int = 0) -> list:
-    """Creates one list of all owned cars (all locked and all unlocked above a certain RQ)."""
-    new_big_list = []
-    unlocked = []
+def create_new_big_list(id_map: dict, player_deck: list[dict], lowest_unlocked: int) -> list:
+    """Creates list of every car in garage."""
     with open(RAW_CI_PATH, "r", encoding="utf-8") as f:
         ci_list = json.load(f)
     ci_dict = {ci["rid"]: ci for ci in ci_list}
 
-    # Iterate through list of joined jsons
-    for td, tdr in all_owned_matched:
-        rid = tdr["rid"].encode("utf-8").decode("latin-1")
+    new_big_list = []
+    for car in player_deck:
+        rid = id_map[car["cardId"]]
         rq = ci_dict[rid]["rq"]
-
-        # Skip unlocked cars past a certain RQ
-        if rq < lowest_unlocked and not td["locked"]:
-            unlocked.append(f"[{rq}] {rid}")
+        if rq < lowest_unlocked and not car["locked"]:
             continue
 
-        # Add to new big list
-        new_big_list.append((rq, rid, _get_tune(td)))
+        new_big_list.append((rq, rid, _get_tune(car)))
 
     # Sort: First by RQ (desc), then rid (asc), then tune (desc)
     new_big_list.sort(key=lambda x: (-x[0], x[1].lower(), -int(x[2])))
     return new_big_list
 
 
-@timer
-def create_owned_lists(big_list: list) -> dict:
+def create_owned_lists(big_list: list) -> dict[str, list]:
     """
     Splits the big list of all owned cars into 3 lists: first version of owned cars, duplicate cars,
     double dupe cars. Ignores any past this.
@@ -129,3 +107,55 @@ def create_owned_lists(big_list: list) -> dict:
         "duplicate_cars": owned[2],
         "double_duplicate_cars": owned[3],
     }
+
+
+def save_garage_json_strs(td_str: str, tdr_str: str) -> None:
+    """Saves JSONs formatted as strings to JSON files."""
+    td = json.loads(td_str)
+    tdr = json.loads(tdr_str)
+
+    with open(OWNED_DIR / "garage_td.json", "w", encoding="utf-8") as f:
+        json.dump(td, f)
+    with open(OWNED_DIR / "garage_td_records.json", "w", encoding="utf-8") as f:
+        json.dump(tdr, f)
+
+
+def update_guid_rid_map(car_infos: list[dict[str, Any]]) -> dict[str, str]:
+    """Uses the latest car infos to update the guid -> rid map"""
+    id_rid_map = {}
+    for car_dict in car_infos:
+        id_rid_map[car_dict["guid"]] = car_dict["rid"]
+
+    with open(OWNED_DIR / "id_map.json", "w", encoding="utf-8") as f:
+        json.dump(id_rid_map, f)
+    return id_rid_map
+
+
+def open_garage_dat() -> list[dict[str, Any]]:
+    """Opens and parses the Garage.dat file"""
+    with open(OWNED_DIR / "Garage.dat", "r", encoding="utf-8") as f:
+        dat = f.read()
+    dat = dat[dat.find("[") :]
+    dat = json.loads(dat)
+    return dat
+
+
+@timer
+def update_ownership(lowest_unlocked: int = 0) -> None:
+    """Updates the owned lists with latest Garage.dat file."""
+    player_deck = open_garage_dat()
+    with open(RAW_CI_PATH, "r", encoding="utf-8") as f:
+        ci_list = json.load(f)
+    id_map = update_guid_rid_map(ci_list)
+
+    new_big_list = create_new_big_list(id_map, player_deck, lowest_unlocked)
+    owned_lists = create_owned_lists(new_big_list)
+
+    with open(OWNED_PATH, "w", encoding="utf-8") as f:
+        json.dump(owned_lists, f)
+
+
+def upload_garage(contents: bytes) -> None:
+    """Saves contents to OWNED_DIR/Garage.dat."""
+    garage_path = OWNED_DIR / "Garage.dat"
+    garage_path.write_bytes(contents)

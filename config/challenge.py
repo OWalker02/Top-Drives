@@ -3,39 +3,12 @@
 CHALLENGE_INFO = {
     "Rogue": {
         "base": {"pref": "rogue_agents_"},
-        6: {
-            "sr": 1,
-            "suf": "following_the_breadcrumbs_6",
-            "rest": {
-                "tag_Rogue_Agents": [((1, 10), 5)],
-                "tyres_Standard/tyres_All-surface/tyres_Off-road": [((1, 10), 5)],
-            },
-        },
-        7: {
-            "suf": "first_contact_7",
-        },
-        8: {
-            "suf": "one_against_many_8",
-            "rest": {"tag_Rogue_Agents": [((1, 10), 5)], "drive_FWD/drive_4WD": [((1, 10), 5)]},
-        },
-        9: {
-            "sr": 10,
-            "suf": "the_system_scatters_9",
-            "rest": {
-                "tag_Rogue_Agents": [((1, 10), 5)],
-                "tyres_Performance/tyres_Slick": [((1, 10), 5)],
-            },
-        },
         10: {
             "sr": 10,
             "suf": "urban_pursuit_10",
             "rest": {
                 "tag_Rogue_Agents": [((1, 10), 5)],
             },
-        },
-        11: {
-            "suf": "off_the_beaten_path_11",
-            "rest": {"tag_Rogue_Agents": [((1, 10), 5)], "class_F": [((1, 10), 5)]},
         },
         14: {
             "suf": "the_double_agent_14",
@@ -57,7 +30,28 @@ CHALLENGE_INFO = {
                 "prize_False": [((1, 10), 5)],
             },
         },
-    }
+    },
+    "Avatar": {
+        "base": {"pref": "avatar_challenge_"},
+        3: {
+            "sr": 8,
+            "suf": "porsche_3",
+            "rest": {
+                "country_DE": [((1, 10), 5)],
+                "year_range_1910_1999": [((1, 10), 5)],
+                "rq_range_40_150": [((1, 10), 5)],
+                "tyres_Performance": [((1, 10), 5)],
+            },
+        },
+        4: {
+            "sr": 6,
+            "suf": "volvo_4",
+            "rest": {
+                "country_SE": [((1, 10), 5)],
+                "rq_range_40_150": [((1, 10), 5)],
+            },
+        },
+    },
 }
 
 COPY_COLS = {

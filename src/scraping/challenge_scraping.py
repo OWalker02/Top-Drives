@@ -82,15 +82,16 @@ def _create_challenge_dict(
         # Races
         for race_i, race_dict in enumerate(round_info["races"]):
             challenge_time = None
-
-            if race_dict["time"]:
-                challenge_time = race_dict["time"]
-            else:
-                try:
-                    challenge_time = _extract_time_from_tas(
-                        tas, race_dict["rid"], race_dict["track"], race_dict["tune"]
-                    )
-                except KeyError:
+            # If time in db, use that (occasionally time in challenge request wrong, so override
+            # with db time)
+            try:
+                challenge_time = _extract_time_from_tas(
+                    tas, race_dict["rid"], race_dict["track"], race_dict["tune"]
+                )
+            except KeyError:
+                if race_dict["time"]:
+                    challenge_time = race_dict["time"]
+                else:
                     print(
                         f"Time for {race_dict['rid']} on {race_dict['track']} not given and not "
                         "scraped. Scraping new."

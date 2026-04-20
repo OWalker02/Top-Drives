@@ -9,12 +9,19 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
 
-from config.paths import OWNED_PATH, RAW_CI_PATH, RAW_TAS_PATH
+from config.paths import (
+    OWNED_PATH,
+    PREPROCESSED_ENC_PATH,
+    PREPROCESSED_PATH,
+    RAW_CI_PATH,
+    RAW_TAS_PATH,
+)
 from config.preprocessing import (
     FLOAT_COLS,
     INT_COLS,
     SIMPLE_ENCODE_COLS,
     TEMP_COLS,
+    UNIQUE_PENS,
 )
 from src.preprocessing._preprocessing_helpers import (
     _add_owned_stats,
@@ -137,6 +144,10 @@ def _calc_penalties(df: pd.DataFrame) -> pd.DataFrame:
     non_zero = df["penalty"] > 0
     df.loc[non_zero, "penalty"] += rq_pen[non_zero]
 
+    # Change unique penalties
+    for rid, pen in UNIQUE_PENS.items():
+        df.loc[df["rid"] == rid, "penalty"] = pen
+
     return df.drop(TEMP_COLS, axis=1)
 
 
@@ -203,3 +214,12 @@ def encode_df(df: pd.DataFrame) -> pd.DataFrame:
         )
         df = pd.concat([df, encoded_category_df], axis=1)
     return df
+
+
+def prep_and_encode(save_preprocessed: bool = False) -> None:
+    """Full preprocess and encode process."""
+    df = preprocess()
+    if save_preprocessed:
+        df.to_csv(PREPROCESSED_PATH, index=False)
+    df = encode_df(df)
+    df.to_csv(PREPROCESSED_ENC_PATH, index=False)
